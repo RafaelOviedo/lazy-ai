@@ -1,0 +1,24 @@
+{
+  "name": "lazy-ai",
+  "version": "0.0.1",
+  "description": "Terminal UI for managing your AI models",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx watch index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "tsc --noEmit"
+  },
+  "author": "Rafael Oviedo Paz",
+  "license": "ISC",
+  "dependencies": {
+    "@b9g/termdom": "^0.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}
