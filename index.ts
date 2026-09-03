@@ -1,12 +1,11 @@
 import { TermDOM } from '@b9g/termdom';
 import { renderHome, renderExample } from './src/pages/index.js';
 
-import { RoutesNames } from './src/pages/types';
+import { RoutesNames } from './src/pages/types.js';
 
+const projectPath = process.cwd();
 const term = new TermDOM();
-term.attach();
-
-const { document } = term;
+const { document, window } = term;
 
 const routes = {
   home: renderHome,
@@ -15,6 +14,8 @@ const routes = {
 
 let cleanup: (() => void) | null = null;
 let currentRoute = RoutesNames.HOME;
+
+term.attach();
 
 function navigate(route: RoutesNames) {
   if (!routes[route]) return;
@@ -25,7 +26,7 @@ function navigate(route: RoutesNames) {
 
 function render() {
   cleanup?.();
-  cleanup = routes[currentRoute]({ document, navigate }) ?? null;
+  cleanup = routes[currentRoute]({ document, window, navigate, projectPath }) ?? null;
 }
 
 render();
