@@ -25,3 +25,5 @@ pnpm-debug.log*
 testConnectionDb.ts
 
 config.json
+
+/PLAN.md

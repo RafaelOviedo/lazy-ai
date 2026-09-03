@@ -1,5 +1,5 @@
 import { TermDOM } from '@b9g/termdom';
-import { renderHome, renderExample } from './src/pages/index.js';
+import { renderHome } from './src/pages/index.js';
 
 import { RoutesNames } from './src/pages/types.js';
 
@@ -9,7 +9,6 @@ const { document, window } = term;
 
 const routes = {
   home: renderHome,
-  example: renderExample,
 };
 
 let cleanup: (() => void) | null = null;

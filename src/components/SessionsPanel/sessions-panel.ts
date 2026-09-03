@@ -193,10 +193,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
           .sessions-panel__content {
             overflow: scroll;
+            max-height: 15px;
           }
 
           .sessions-panel__title {
             color: #5fafff;
+            border: 1px solid transparent;
           }
 
           .sessions-panel__item {
