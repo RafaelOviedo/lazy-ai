@@ -153,7 +153,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           .sessions-panel__item.is-selected {
             color: #ffffff;
             height: 3px;
-            background: green;
+            background: #2E668C;
           }
 
           .sessions-panel__item-title {

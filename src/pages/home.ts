@@ -1,10 +1,12 @@
 import type { CodexSessionSummary } from "../repositories/sessions/codex/types.js";
 
 import { type SessionsPanelElement, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
+import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
 
 import { PageProps } from "./types.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
+import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -21,6 +23,7 @@ function shortSessionId(sessionId: string): string {
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
+  ensureProjectsPanelDefined(window);
 
   document.body.innerHTML = `
     <div class="card">
@@ -28,10 +31,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         <div class="container-1">
           <sessions-panel class="container-1-1" id="panel-1" tabindex="0"></sessions-panel>
 
-          <div class="container-1-2" id="panel-2" tabindex="0">
-            <legend style="color: #5fafff;">Projects</legend>
-            <div class="panel-content" id="projects-content"></div>
-          </div>
+          <projects-panel class="container-1-2" id="panel-2" tabindex="0"></projects-panel>
 
           <div class="container-1-3" id="panel-3" tabindex="0">
             <legend style="color: #5fafff;">Context</legend>
@@ -101,11 +101,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         border-radius: 5px;
       }
 
-     .container-1-1:focus,
-     .container-1-2:focus,
-     .container-1-3:focus {
-       border-color: #fff;
-     }
+      .container-1-1:focus,
+      .container-1-2:focus,
+      .container-1-3:focus {
+        border-color: #fff;
+      }
 
       .panel-content,
       .footer-content {
@@ -125,15 +125,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         color: #8aa4bf;
       }
 
-      .project-name {
-        color: #d7ecff;
-        font-weight: bold;
-      }
-
       .footer {
         width: 97.5%;
         height: 10%;
         border: 1px solid #5fafff;
+        border-radius: 5px;
       }
     </style>
   `;
@@ -141,30 +137,26 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const panel1 = document.getElementById("panel-1");
   const panel2 = document.getElementById("panel-2");
   const panel3 = document.getElementById("panel-3");
-  const projectsContent = document.getElementById("projects-content");
+
   const contextContent = document.getElementById("context-content");
   const detailsContent = document.getElementById("details-content");
   const statusContent = document.getElementById("status-content");
 
   const panels = [panel1, panel2, panel3].filter((panel): panel is NonNullable<typeof panel1> => panel !== null);
-  const projectName = projectPath.split("/").filter(Boolean).at(-1) ?? projectPath;
+
+  const initialProjectName = projectPath.split("/").filter(Boolean).at(-1) ?? projectPath;
+  let selectedProjectPath = projectPath;
+  let selectedProjectName = initialProjectName;
+
   let selectedSession: CodexSessionSummary | null = null;
-  let sessionCount = 0;
+
   let loadError: string | null = null;
+  let projectLoadError: string | null = null;
 
   panel1?.focus();
 
   const sessionsPanel = panel1 as SessionsPanelElement | null;
-
-  function renderProjectsPanel() {
-    if (!projectsContent) return;
-
-    projectsContent.innerHTML = `
-      <div style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; height: 5px;">
-        <div class="project-name">${escapeHtml(projectName)}</div><div class="muted">${escapeHtml(projectPath)}</div><div class="muted">Sessions in this project: ${sessionCount}</div>
-      </div>
-    `;
-  }
+  const projectsPanel = panel2 as ProjectsPanelElement | null;
 
   function getSelectedSession(): CodexSessionSummary | null {
     return selectedSession;
@@ -180,7 +172,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         <div class="muted">Source</div>
         <div>~/.codex session history</div>
         <div class="muted" style="margin-top: 0.5rem;">Project</div>
-        <div>${escapeHtml(projectName)}</div>
+        <div>${escapeHtml(selectedProjectName)}</div>
+        <div class="muted" style="margin-top: 0.5rem;">Path</div>
+        <div>${escapeHtml(selectedProjectPath)}</div>
       `;
       return;
     }
@@ -222,6 +216,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     const selectedSession = getSelectedSession();
 
+    if (projectLoadError) {
+      statusContent.innerHTML = escapeHtml(projectLoadError);
+      return;
+    }
+
     if (loadError) {
       statusContent.innerHTML = escapeHtml(loadError);
       return;
@@ -236,17 +235,40 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function renderPanels() {
-    renderProjectsPanel();
     renderContextPanel();
     renderDetailsPanel();
     renderStatusBar();
+  }
+
+  function onProjectChange(event: Event) {
+    const customEvent = event as CustomEvent<ProjectSelectionChangeDetail>;
+    const selectedProject = customEvent.detail.project;
+
+    projectLoadError = customEvent.detail.error;
+
+    if (selectedProject) {
+      selectedProjectPath = selectedProject.path;
+      selectedProjectName = selectedProject.name;
+      selectedSession = null;
+      loadError = null;
+
+      if (sessionsPanel && sessionsPanel.projectPath !== selectedProject.path) {
+        sessionsPanel.projectPath = selectedProject.path;
+      }
+    } else {
+      selectedProjectPath = projectPath;
+      selectedProjectName = initialProjectName;
+      selectedSession = null;
+    }
+
+    renderPanels();
   }
 
   function onSessionChange(event: Event) {
     const customEvent = event as CustomEvent<SessionSelectionChangeDetail>;
 
     selectedSession = customEvent.detail.session;
-    sessionCount = customEvent.detail.sessionCount;
+    selectedProjectPath = customEvent.detail.projectPath || selectedProjectPath;
     loadError = customEvent.detail.error;
     renderPanels();
   }
@@ -269,7 +291,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   document.addEventListener("keydown", onKeyDown);
+
+  projectsPanel?.addEventListener("project-change", onProjectChange);
   sessionsPanel?.addEventListener("session-change", onSessionChange);
+
+  if (projectsPanel) {
+    projectsPanel.projectPath = projectPath;
+  }
 
   if (sessionsPanel) {
     sessionsPanel.projectPath = projectPath;
@@ -278,6 +306,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   renderPanels();
 
   return () => {
+    projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
     document.removeEventListener("keydown", onKeyDown);
   };
