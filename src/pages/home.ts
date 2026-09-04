@@ -2,11 +2,13 @@ import type { CodexSessionSummary } from "../repositories/sessions/codex/types.j
 
 import { type SessionsPanelElement, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
+import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 
 import { PageProps } from "./types.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
+import { ensureContextPanelDefined } from "../components/ContextPanel/context-panel.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -24,6 +26,7 @@ function shortSessionId(sessionId: string): string {
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
   ensureProjectsPanelDefined(window);
+  ensureContextPanelDefined(window);
 
   document.body.innerHTML = `
     <div class="card">
@@ -33,10 +36,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
           <projects-panel class="container-1-2" id="panel-2" tabindex="0"></projects-panel>
 
-          <div class="container-1-3" id="panel-3" tabindex="0">
-            <legend style="color: #5fafff;">Context</legend>
-            <div class="panel-content" id="context-content"></div>
-          </div>
+          <context-panel class="container-1-3" id="panel-3" tabindex="0"></context-panel>
         </div>
 
         <div class="container-2" id="details-panel">
@@ -138,7 +138,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const panel2 = document.getElementById("panel-2");
   const panel3 = document.getElementById("panel-3");
 
-  const contextContent = document.getElementById("context-content");
   const detailsContent = document.getElementById("details-content");
   const statusContent = document.getElementById("status-content");
 
@@ -157,33 +156,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const sessionsPanel = panel1 as SessionsPanelElement | null;
   const projectsPanel = panel2 as ProjectsPanelElement | null;
+  const contextPanel = panel3 as ContextPanelElement | null;
 
   function getSelectedSession(): CodexSessionSummary | null {
     return selectedSession;
-  }
-
-  function renderContextPanel() {
-    if (!contextContent) return;
-
-    const selectedSession = getSelectedSession();
-
-    if (!selectedSession) {
-      contextContent.innerHTML = `
-        <div class="muted">Source</div>
-        <div>~/.codex session history</div>
-        <div class="muted" style="margin-top: 0.5rem;">Project</div>
-        <div>${escapeHtml(selectedProjectName)}</div>
-        <div class="muted" style="margin-top: 0.5rem;">Path</div>
-        <div>${escapeHtml(selectedProjectPath)}</div>
-      `;
-      return;
-    }
-
-    contextContent.innerHTML = `
-      <div style="display: flex; flex-direction: row; justify-content: center; align-items: flex-start; height: 10px; border: 1px solid red;">
-        <div class="muted">Session ID</div> · <div>${escapeHtml(shortSessionId(selectedSession.id))}</div> · <div class="muted"">Model</div><div>${escapeHtml(selectedSession.model)}</div><div class="muted">Updated</div><div>${escapeHtml(selectedSession.relativeUpdated)}</div>
-      </div>
-    `;
   }
 
   function renderDetailsPanel() {
@@ -235,9 +211,16 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function renderPanels() {
-    renderContextPanel();
     renderDetailsPanel();
     renderStatusBar();
+  }
+
+  function syncContextPanel() {
+    if (!contextPanel) return;
+
+    contextPanel.projectName = selectedProjectName;
+    contextPanel.projectPath = selectedProjectPath;
+    contextPanel.selectedSession = selectedSession;
   }
 
   function onProjectChange(event: Event) {
@@ -261,6 +244,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       selectedSession = null;
     }
 
+    syncContextPanel();
     renderPanels();
   }
 
@@ -270,6 +254,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     selectedSession = customEvent.detail.session;
     selectedProjectPath = customEvent.detail.projectPath || selectedProjectPath;
     loadError = customEvent.detail.error;
+    syncContextPanel();
     renderPanels();
   }
 
@@ -298,6 +283,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   if (projectsPanel) {
     projectsPanel.projectPath = projectPath;
   }
+
+  syncContextPanel();
 
   if (sessionsPanel) {
     sessionsPanel.projectPath = projectPath;
