@@ -160,9 +160,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!projectsContent) return;
 
     projectsContent.innerHTML = `
-      <div class="project-name">${escapeHtml(projectName)}</div>
-      <div class="muted">${escapeHtml(projectPath)}</div>
-      <div class="muted" style="margin-top: 0.5rem;">Sessions in this project: ${sessionCount}</div>
+      <div style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; height: 5px;">
+        <div class="project-name">${escapeHtml(projectName)}</div><div class="muted">${escapeHtml(projectPath)}</div><div class="muted">Sessions in this project: ${sessionCount}</div>
+      </div>
     `;
   }
 
@@ -186,9 +186,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     }
 
     contextContent.innerHTML = `
-      <div class="muted">Session ID</div><div>${escapeHtml(shortSessionId(selectedSession.id))}</div>
-      <div class="muted" style="margin-top: 0.5rem;">Model</div><div>${escapeHtml(selectedSession.model)}</div>
-      <div class="muted" style="margin-top: 0.5rem;">Updated</div><div>${escapeHtml(selectedSession.relativeUpdated)}</div>
+      <div style="display: flex; flex-direction: row; justify-content: center; align-items: flex-start; height: 10px; border: 1px solid red;">
+        <div class="muted">Session ID</div> · <div>${escapeHtml(shortSessionId(selectedSession.id))}</div> · <div class="muted"">Model</div><div>${escapeHtml(selectedSession.model)}</div><div class="muted">Updated</div><div>${escapeHtml(selectedSession.relativeUpdated)}</div>
+      </div>
     `;
   }
 
@@ -251,12 +251,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     renderPanels();
   }
 
-  sessionsPanel?.addEventListener("session-change", onSessionChange);
-  if (sessionsPanel) {
-    sessionsPanel.projectPath = projectPath;
-  }
-  renderPanels();
-
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
     const active = document.activeElement;
@@ -274,17 +268,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     panels[nextIndex].focus();
   }
 
-  // function goToExample(event: Event) {
-  //   event.preventDefault();
-  //   navigate(RoutesNames.EXAMPLE);
-  // }
-
   document.addEventListener("keydown", onKeyDown);
+  sessionsPanel?.addEventListener("session-change", onSessionChange);
+
+  if (sessionsPanel) {
+    sessionsPanel.projectPath = projectPath;
+  }
+
+  renderPanels();
 
   return () => {
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
     document.removeEventListener("keydown", onKeyDown);
   };
-
-  // document.getElementById("go-example")?.addEventListener("click", goToExample);
 }

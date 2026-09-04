@@ -113,64 +113,6 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Moves the current selection up or down within the session list.
-     */
-    private moveSelection(direction: 1 | -1): void {
-      if (this.sessions.length === 0) return;
-
-      this.selectedSessionIndex =
-        (this.selectedSessionIndex + direction + this.sessions.length) % this.sessions.length;
-
-      this.render();
-      this.revealSelectedSession();
-      this.dispatchSelectionChange();
-    }
-
-    /**
-     * Keeps the selected session row visible inside the scrollable content area.
-     */
-    private revealSelectedSession(): void {
-      const selectedItem = this.querySelector<HTMLElement>("[data-selected='true']");
-
-      selectedItem?.scrollIntoView({ block: "nearest" });
-    }
-
-    /**
-     * Handles list navigation keys while the panel itself is focused.
-     */
-    private onKeyDown(event: KeyboardEvent): void {
-      const key = event.key.toLowerCase();
-
-      if (key === "j" || key === "arrowdown") {
-        this.moveSelection(1);
-        event.preventDefault();
-        return;
-      }
-
-      if (key === "k" || key === "arrowup") {
-        this.moveSelection(-1);
-        event.preventDefault();
-      }
-    }
-
-    /**
-     * Emits the selected session so the rest of the layout can stay in sync.
-     */
-    private dispatchSelectionChange(): void {
-      const detail: SessionSelectionChangeDetail = {
-        session: this.selectedSession,
-        sessionCount: this.sessions.length,
-        projectPath: this.projectPathValue,
-        error: this.loadError,
-      };
-
-      this.dispatchEvent(new window.CustomEvent<SessionSelectionChangeDetail>("session-change", {
-        bubbles: true,
-        detail,
-      }));
-    }
-
-    /**
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
@@ -230,6 +172,64 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           ${this.renderContentMarkup()}
         </div>
       `;
+    }
+
+    /**
+     * Moves the current selection up or down within the session list.
+     */
+    private moveSelection(direction: 1 | -1): void {
+      if (this.sessions.length === 0) return;
+
+      this.selectedSessionIndex =
+        (this.selectedSessionIndex + direction + this.sessions.length) % this.sessions.length;
+
+      this.render();
+      this.revealSelectedSession();
+      this.dispatchSelectionChange();
+    }
+
+    /**
+     * Keeps the selected session row visible inside the scrollable content area.
+     */
+    private revealSelectedSession(): void {
+      const selectedItem = this.querySelector<HTMLElement>("[data-selected='true']");
+
+      selectedItem?.scrollIntoView({ block: "nearest" });
+    }
+
+    /**
+     * Handles list navigation keys while the panel itself is focused.
+     */
+    private onKeyDown(event: KeyboardEvent): void {
+      const key = event.key.toLowerCase();
+
+      if (key === "j" || key === "arrowdown") {
+        this.moveSelection(1);
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "k" || key === "arrowup") {
+        this.moveSelection(-1);
+        event.preventDefault();
+      }
+    }
+
+    /**
+     * Emits the selected session so the rest of the layout can stay in sync.
+     */
+    private dispatchSelectionChange(): void {
+      const detail: SessionSelectionChangeDetail = {
+        session: this.selectedSession,
+        sessionCount: this.sessions.length,
+        projectPath: this.projectPathValue,
+        error: this.loadError,
+      };
+
+      this.dispatchEvent(new window.CustomEvent<SessionSelectionChangeDetail>("session-change", {
+        bubbles: true,
+        detail,
+      }));
     }
 
     /**
