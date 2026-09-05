@@ -15,6 +15,10 @@ import { ensureContextPanelDefined } from "../components/ContextPanel/context-pa
 import { ensureDetailsPanelDefined } from "../components/DetailsPanel/details-panel.js";
 import { ensureStatusPanelDefined } from "../components/StatusPanel/status-panel.js";
 import { ensureKeybindingsPanelDefined } from "../components/KeybindingsPanel/keybindings-panel.js";
+import { ensureModalDefined } from "../components/Modal/modal.js";
+
+import { useModal } from "../composables/useModal.js";
+import { ModalName } from "../shared/lib/modal/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
@@ -23,16 +27,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureDetailsPanelDefined(window);
   ensureStatusPanelDefined(window);
   ensureKeybindingsPanelDefined(window);
+  ensureModalDefined(window);
+
+  const { openModal } = useModal();
 
   document.body.innerHTML = `
     <div class="card">
-      <legend>v1.0.0</legend>
+      <legend>v0.0.1</legend>
       <div class="container-for-1-and-2">
         <div class="container-1">
           <sessions-panel class="container-1-1" id="panel-1" tabindex="0"></sessions-panel>
-
           <projects-panel class="container-1-2" id="panel-2" tabindex="0"></projects-panel>
-
           <context-panel class="container-1-3" id="panel-3" tabindex="0"></context-panel>
         </div>
 
@@ -40,8 +45,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       </div>
 
       <status-panel id="status-panel"></status-panel>
-
       <keybindings-panel></keybindings-panel>
+
+      <app-modal id="modal-root"></app-modal>
     </div>
 
     <style>
@@ -50,6 +56,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         flex-direction: column;
         justify-content: space-evenly;
         align-items: center;
+        position: relative;
         border: 1px solid #5fafff;
         padding: 0 1ch;
         width: 100%;
@@ -63,7 +70,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         justify-content: space-evenly;
         width: 98%;
         height: 90%;
-        /* border: 1px solid red; */
       }
 
       .container-1 {
@@ -186,25 +192,46 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
+
+    if (handleModalShortcuts(event, key)) return;
+    if (handleQuitShortcut(event, key)) return;
+    if (handlePanelNavigation(event, key)) return;
+  }
+
+  function handleModalShortcuts(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.QUESTION_MARK) return false;
+
+    event.preventDefault();
+    openModal(ModalName.helpInfoModal);
+    return true;
+  }
+
+  function handleQuitShortcut(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.Q) return false;
+
+    event.preventDefault();
+    window.close();
+    return true;
+  }
+
+  function handlePanelNavigation(event: KeyboardEvent, key: string): boolean {
+    if (key !== Keybindings.H && key !== Keybindings.L) return false;
+
     const active = document.activeElement;
-
-    if (!event.altKey && !event.ctrlKey && !event.metaKey && key === Keybindings.Q) {
-      event.preventDefault();
-      window.close();
-      return;
-    }
-
-    if (key !== Keybindings.H && key !== Keybindings.L) return;
-
     const currentIndex = panels.findIndex((panel) => panel === active);
 
-    if (currentIndex === -1) return;
+    if (currentIndex === -1) return false;
 
     const direction = key === Keybindings.L ? 1 : -1;
     const nextIndex = (currentIndex + direction + panels.length) % panels.length;
 
     event.preventDefault();
     panels[nextIndex].focus();
+    return true;
+  }
+
+  function isPlainKeyEvent(event: KeyboardEvent): boolean {
+    return !event.altKey && !event.ctrlKey && !event.metaKey;
   }
 
   document.addEventListener("keydown", onKeyDown);
