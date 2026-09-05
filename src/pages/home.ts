@@ -3,12 +3,14 @@ import type { CodexSessionSummary } from "../repositories/sessions/codex/types.j
 import { type SessionsPanelElement, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
+import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
 
 import { PageProps } from "./types.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
 import { ensureContextPanelDefined } from "../components/ContextPanel/context-panel.js";
+import { ensureDetailsPanelDefined } from "../components/DetailsPanel/details-panel.js";
 import { Keybindings } from "../app/keybindings.types.js";
 import { escapeHtml } from "../shared/lib/html/index.js";
 
@@ -20,6 +22,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
   ensureProjectsPanelDefined(window);
   ensureContextPanelDefined(window);
+  ensureDetailsPanelDefined(window);
 
   document.body.innerHTML = `
     <div class="card">
@@ -33,10 +36,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
           <context-panel class="container-1-3" id="panel-3" tabindex="0"></context-panel>
         </div>
 
-        <div class="container-2" id="details-panel">
-          <legend style="color: #5fafff;">Details</legend>
-          <div class="panel-content" id="details-content"></div>
-        </div>
+        <details-panel id="details-panel"></details-panel>
       </div>
 
       <footer class="footer">
@@ -103,13 +103,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         height: 87%;
       }
 
-      .container-2 {
-        width: 67%;
-        height: 87%;
-        border: 1px solid #5fafff;
-        border-radius: 5px;
-      }
-
       .container-1-2 {
         width: fit-content;
         height: 39%;
@@ -130,22 +123,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         border-color: #fff;
       }
 
-      .panel-content,
       .footer-content {
         padding: 0.5rem 1ch;
-      }
-
-      .panel-content {
-        white-space: pre-wrap;
-      }
-
-      .session-title {
-        color: #d7ecff;
-      }
-
-      .session-meta,
-      .muted {
-        color: #8aa4bf;
       }
 
       .footer {
@@ -176,8 +155,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const panel1 = document.getElementById("panel-1");
   const panel2 = document.getElementById("panel-2");
   const panel3 = document.getElementById("panel-3");
+  const detailsPanelElement = document.getElementById("details-panel");
 
-  const detailsContent = document.getElementById("details-content");
   const statusContent = document.getElementById("status-content");
 
   const panels = [panel1, panel2, panel3].filter((panel): panel is NonNullable<typeof panel1> => panel !== null);
@@ -196,27 +175,16 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionsPanel = panel1 as SessionsPanelElement | null;
   const projectsPanel = panel2 as ProjectsPanelElement | null;
   const contextPanel = panel3 as ContextPanelElement | null;
+  const detailsPanel = detailsPanelElement as DetailsPanelElement | null;
 
   function getSelectedSession(): CodexSessionSummary | null {
     return selectedSession;
   }
 
-  function renderDetailsPanel() {
-    if (!detailsContent) return;
+  function syncDetailsPanel() {
+    if (!detailsPanel) return;
 
-    const selectedSession = getSelectedSession();
-
-    if (!selectedSession) {
-      detailsContent.innerHTML = `
-        <div>No session selected yet.</div>
-        <div class="muted" style="margin-top: 0.5rem;">This panel will show transcript and tool activity once session interaction is wired in.</div>
-      `;
-      return;
-    }
-
-    detailsContent.innerHTML = `
-      <div class="session-title">${escapeHtml(selectedSession.title)}</div>
-    `;
+    detailsPanel.selectedSession = selectedSession;
   }
 
   function renderStatusBar() {
@@ -243,7 +211,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function renderPanels() {
-    renderDetailsPanel();
+    syncDetailsPanel();
     renderStatusBar();
   }
 
