@@ -21,10 +21,13 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private sessions: CodexSessionSummary[] = [];
     private selectedSessionIndex = 0;
     private isLoading = true;
+    private hasFocus = false;
     private loadError: string | null = null;
 
     constructor() {
       super();
+      this.onBlur = this.onBlur.bind(this);
+      this.onFocus = this.onFocus.bind(this);
       this.onKeyDown = this.onKeyDown.bind(this);
     }
 
@@ -37,6 +40,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       }
 
       this.render();
+      this.addEventListener("blur", this.onBlur);
+      this.addEventListener("focus", this.onFocus);
       this.addEventListener("keydown", this.onKeyDown);
 
       if (this.projectPathValue) {
@@ -48,6 +53,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
+      this.removeEventListener("blur", this.onBlur);
+      this.removeEventListener("focus", this.onFocus);
       this.removeEventListener("keydown", this.onKeyDown);
     }
 
@@ -116,6 +123,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
+      const titleClass = this.hasFocus ? "sessions-panel__title is-focused" : "sessions-panel__title";
+
       this.innerHTML = `
         <style>
           sessions-panel {
@@ -133,16 +142,16 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
-          sessions-panel:focus .sessions-panel__title {
-            color: #fff;
-          }
-
           .sessions-panel__title {
             display: flex;
             justify-content: flex-start;
             align-items: center;
             color: #5fafff;
             border: 1px solid transparent;
+          }
+
+          .sessions-panel__title.is-focused {
+            color: #fff;
           }
 
           .sessions-panel__content {
@@ -181,12 +190,28 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         </style>
 
         <div>
-          <span class="sessions-panel__title">Sessions <span class="sessions-panel__footer">${this.renderSessionCountMarkup()}</span></span>
+          <span class="${titleClass}">Sessions <span class="sessions-panel__footer">${this.renderSessionCountMarkup()}</span></span>
         </div>
         <div class="sessions-panel__content">
           ${this.renderContentMarkup()}
         </div>
       `;
+    }
+
+    /**
+     * Tracks when the panel loses focus so the title returns to its inactive color.
+     */
+    private onBlur(): void {
+      this.hasFocus = false;
+      this.render();
+    }
+
+    /**
+     * Tracks when the panel gains focus so the title uses the active color.
+     */
+    private onFocus(): void {
+      this.hasFocus = true;
+      this.render();
     }
 
     /**
