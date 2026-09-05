@@ -171,7 +171,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
           .projects-panel__item.is-selected {
             color: #ffffff;
             height: 3px;
-            background: blue;
+            background: #2E668C;
           }
 
           .projects-panel__item-name {

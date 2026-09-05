@@ -53,13 +53,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       <footer class="keybindings">
         <legend>Keybindings:</legend>
         <div class="keybindings-content">
-          <span class="keybinding-color">h ↓ Previous panel</span> <span>-</span>
-          <span class="keybinding-color">l ↑ Next panel</span> <span>-</span> 
-          <span class="keybinding-color">j ↓  Next item</span> <span>-</span>
-          <span class="keybinding-color">k ↑  Previous item</span> <span>-</span>
-          <span class="keybinding-color">Tab Next panel</span> <span>-</span>
-          <span class="keybinding-color">Shift+Tab Previous panel</span> <span>-</span>
-          <span class="keybinding-color">n New session</span> <span>-</span>
+          <span class="keybinding-color">h ↓ Previous panel</span> <span><></span>
+          <span class="keybinding-color">l ↑ Next panel</span> <span><></span> 
+          <span class="keybinding-color">j ↓  Next item</span> <span><></span>
+          <span class="keybinding-color">k ↑  Previous item</span> <span><></span>
+          <span class="keybinding-color">n New session</span> <span><></span>
+          <span class="keybinding-color">d Delete session</span> <span><></span>
           <!-- <span>1-4  Focus panel</span> -->
           <!-- <span>Esc  Back / close</span> -->
           <!-- <span>p  Prompt</span> -->
@@ -222,13 +221,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     detailsContent.innerHTML = `
       <div class="session-title">${escapeHtml(selectedSession.title)}</div>
-      <div class="muted" style="margin-top: 0.5rem;">Project</div>
-      <div>${escapeHtml(selectedSession.projectPath)}</div>
-      <div class="muted" style="margin-top: 0.5rem;">Last updated</div>
-      <div>${escapeHtml(selectedSession.updatedAt || selectedSession.relativeUpdated)}</div>
-      <div class="muted" style="margin-top: 0.5rem;">Next</div>
-      <div>Resume this session and stream its activity into this panel.</div>
-      <div class="muted" style="margin-top: 0.5rem;">Navigation: j/k to move inside Sessions, h/l to move across panels.</div>
     `;
   }
 

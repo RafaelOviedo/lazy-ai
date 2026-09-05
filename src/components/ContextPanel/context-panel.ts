@@ -109,7 +109,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      const titleClass = this.hasFocus ? "sessions-panel__title is-focused" : "sessions-panel__title";
+      const titleClass = this.hasFocus ? "context-panel__title is-focused" : "context-panel__title";
 
       this.innerHTML = `
         <style>
