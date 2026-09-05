@@ -16,7 +16,6 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
    * Renders the Sessions panel and owns its loading and selection state.
    */
   class SessionsPanel extends window.HTMLElement {
-    private readonly visibleSessionRows = 5;
     private projectPathValue = "";
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private sessions: CodexSessionSummary[] = [];
@@ -134,23 +133,19 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
+          sessions-panel:focus .sessions-panel__title {
+            color: #fff;
+          }
+
           .sessions-panel__title {
-            width: 7%;
             display: flex;
-            justify-content: space-evenly;
+            justify-content: flex-start;
             align-items: center;
             color: #5fafff;
             border: 1px solid transparent;
           }
 
-          .sessions-panel__body {
-            display: flex;
-            flex-direction: row;
-            align-items: flex-start;
-          }
-
           .sessions-panel__content {
-            width: 30%;
             overflow: scroll;
             max-height: 15px;
           }
@@ -185,11 +180,11 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           }
         </style>
 
-        <div class="sessions-panel__title">Sessions <span class="sessions-panel__footer">${this.renderSessionCountMarkup()}</span></div>
-        <div class="sessions-panel__body">
-          <div class="sessions-panel__content">
-            ${this.renderContentMarkup()}
-          </div>
+        <div>
+          <span class="sessions-panel__title">Sessions <span class="sessions-panel__footer">${this.renderSessionCountMarkup()}</span></span>
+        </div>
+        <div class="sessions-panel__content">
+          ${this.renderContentMarkup()}
         </div>
       `;
     }
