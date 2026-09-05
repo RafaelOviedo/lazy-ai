@@ -1,4 +1,5 @@
 import { CodexProjectRepository } from "../../repositories/projects/codex/index.js";
+import { escapeHtml } from "../../shared/lib/html/index.js";
 
 import type { CodexProjectReader, CodexProjectSummary } from "../../repositories/projects/codex/types.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
@@ -309,7 +310,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       }
 
       if (this.loadError) {
-        return `<div>${this.escapeHtml(this.loadError)}</div>`;
+        return `<div>${escapeHtml(this.loadError)}</div>`;
       }
 
       if (this.projects.length === 0) {
@@ -326,7 +327,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
-            <div><span>${marker}</span> <span class="projects-panel__item-name">${this.escapeHtml(project.name)}</span> <span class="projects-panel__meta">${project.sessionCount} sessions · ${this.escapeHtml(project.relativeUpdated)}</span></div>
+            <div><span>${marker}</span> <span class="projects-panel__item-name">${escapeHtml(project.name)}</span> <span class="projects-panel__meta">${project.sessionCount} sessions · ${escapeHtml(project.relativeUpdated)}</span></div>
           </div>
         `;
       })
@@ -344,17 +345,6 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       return `(${this.selectedSessionIndex + 1}/${this.projects.length})`;
     }
 
-    /**
-     * Escapes display strings before injecting them into the panel markup.
-     */
-    private escapeHtml(value: string): string {
-      return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
   }
 
   window.customElements.define("projects-panel", ProjectsPanel);

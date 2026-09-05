@@ -1,4 +1,5 @@
 import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
+import { escapeHtml } from "../../shared/lib/html/index.js";
 
 import type { CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 
@@ -285,7 +286,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       }
 
       if (this.loadError) {
-        return `<div>${this.escapeHtml(this.loadError)}</div>`;
+        return `<div>${escapeHtml(this.loadError)}</div>`;
       }
 
       if (this.sessions.length === 0) {
@@ -302,7 +303,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
-            <div><span>${marker}</span> <span class="sessions-panel__item-title">${this.escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${this.escapeHtml(session.relativeUpdated)} · ${this.escapeHtml(session.status)}</span></div>
+            <div><span>${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · ${escapeHtml(session.status)}</span></div>
           </div>
         `;
       })
@@ -320,17 +321,6 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       return `(${this.selectedSessionIndex + 1}/${this.sessions.length})`;
     }
 
-    /**
-     * Escapes display strings before injecting them into the panel markup.
-     */
-    private escapeHtml(value: string): string {
-      return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
   }
 
   window.customElements.define("sessions-panel", SessionsPanel);

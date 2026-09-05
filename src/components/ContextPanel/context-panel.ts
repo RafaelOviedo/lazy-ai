@@ -1,5 +1,6 @@
 import type { CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 import type { TermWindow } from "./types.js";
+import { escapeHtml } from "../../shared/lib/html/index.js";
 
 /**
  * Registers the Context panel custom element against a TermDOM window.
@@ -184,15 +185,15 @@ export function ensureContextPanelDefined(window: TermWindow): void {
           <div class="context-panel__muted">Source</div>
           <div>~/.codex session history</div>
           <div class="context-panel__muted" style="margin-top: 0.5rem;">Project</div>
-          <div>${this.escapeHtml(this.projectNameValue)}</div>
+          <div>${escapeHtml(this.projectNameValue)}</div>
           <div class="context-panel__muted" style="margin-top: 0.5rem;">Path</div>
-          <div>${this.escapeHtml(this.projectPathValue)}</div>
+          <div>${escapeHtml(this.projectPathValue)}</div>
         `;
       }
 
       return `
         <div>
-          <div class="context-panel__muted">Session ID</div> · <div>${this.escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · <div class="context-panel__muted">Model</div><div>${this.escapeHtml(this.selectedSessionValue.model)}</div><div class="context-panel__muted">Updated</div><div>${this.escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
+          <div class="context-panel__muted">Session ID</div> · <div>${escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div><div class="context-panel__muted">Updated</div><div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
         </div>
       `;
     }
@@ -204,17 +205,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       return sessionId.slice(0, 8);
     }
 
-    /**
-     * Escapes display strings before injecting them into the panel markup.
-     */
-    private escapeHtml(value: string): string {
-      return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
   }
 
   window.customElements.define("context-panel", ContextPanel);
