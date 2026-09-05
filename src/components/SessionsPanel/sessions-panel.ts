@@ -124,6 +124,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      */
     private render(): void {
       const titleClass = this.hasFocus ? "sessions-panel__title is-focused" : "sessions-panel__title";
+      const counterClass = this.hasFocus ? "sessions-panel__counter is-focused" : "sessions-panel__counter";
 
       this.innerHTML = `
         <style>
@@ -182,15 +183,18 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             color: #8aa4bf;
           }
 
-          .sessions-panel__footer {
+          .sessions-panel__counter {
             display: flex;
             justify-content: flex-end;
             color: #8aa4bf;
           }
+          .sessions-panel__counter.is-focused {
+            color: #fff;
+          }
         </style>
 
         <div>
-          <span class="${titleClass}">Sessions <span class="sessions-panel__footer">${this.renderSessionCountMarkup()}</span></span>
+          <span class="${titleClass}">Sessions <span class="${counterClass}">${this.renderSessionCountMarkup()}</span></span>
         </div>
         <div class="sessions-panel__content">
           ${this.renderContentMarkup()}
