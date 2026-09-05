@@ -2,7 +2,16 @@ import { readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
-import { CodexSessionReader, CodexSessionRepositoryOptions, CodexSessionSummary, SessionIndexRow, SessionMetaEvent } from "./types";
+import type {
+  CodexSessionReader,
+  CodexSessionRepositoryOptions,
+  CodexSessionSummary,
+  SessionContext,
+  SessionIndexRow,
+  SessionMetaEvent,
+  ThreadSettingsAppliedEvent,
+  TurnContextEvent,
+} from "./types";
 
 /**
  * Reads persisted Codex sessions from the local Codex data directory.
@@ -38,10 +47,10 @@ export class CodexSessionRepository implements CodexSessionReader {
 
       if (!sessionFilePath) continue;
 
-      const meta = await this.readSessionMeta(sessionFilePath);
+      const sessionContext = await this.readSessionContext(sessionFilePath);
 
-      if (!meta?.cwd) continue;
-      if (projectPath && meta.cwd !== projectPath) continue;
+      if (!sessionContext?.cwd) continue;
+      if (projectPath && sessionContext.cwd !== projectPath) continue;
 
       const updatedAt = row.updated_at ?? "";
 
@@ -50,9 +59,9 @@ export class CodexSessionRepository implements CodexSessionReader {
         title: row.thread_name?.trim() || "Untitled session",
         updatedAt,
         relativeUpdated: this.formatRelativeTime(updatedAt),
-        projectPath: meta.cwd,
-        projectName: basename(meta.cwd) || meta.cwd,
-        model: meta.model ?? "default",
+        projectPath: sessionContext.cwd,
+        projectName: basename(sessionContext.cwd) || sessionContext.cwd,
+        model: sessionContext.model ?? "unknown",
         status: "saved",
       });
     }
@@ -78,29 +87,42 @@ export class CodexSessionRepository implements CodexSessionReader {
   }
 
   /**
-   * Extracts the session metadata event from a persisted session file.
+   * Extracts project and model context from a persisted session file.
    */
-  private async readSessionMeta(filePath: string): Promise<SessionMetaEvent["payload"] | null> {
+  private async readSessionContext(filePath: string): Promise<SessionContext | null> {
     try {
       const file = await readFile(filePath, "utf8");
       const lines = file.split("\n");
+      const sessionContext: SessionContext = {};
 
       for (const line of lines) {
         const trimmedLine = line.trim();
 
         if (!trimmedLine) continue;
 
-        const record = JSON.parse(trimmedLine) as SessionMetaEvent;
+        const record = JSON.parse(trimmedLine) as SessionMetaEvent | ThreadSettingsAppliedEvent | TurnContextEvent;
 
         if (record.type === "session_meta" && record.payload) {
-          return record.payload;
+          sessionContext.cwd = record.payload.cwd ?? sessionContext.cwd;
+          sessionContext.model = record.payload.model ?? sessionContext.model;
+          continue;
+        }
+
+        if (record.type === "turn_context" && record.payload) {
+          sessionContext.cwd = sessionContext.cwd ?? record.payload.cwd;
+          sessionContext.model = record.payload.model ?? sessionContext.model;
+          continue;
+        }
+
+        if (record.type === "event_msg" && record.payload?.type === "thread_settings_applied") {
+          sessionContext.model = record.payload.thread_settings?.model ?? sessionContext.model;
         }
       }
+
+      return Object.keys(sessionContext).length > 0 ? sessionContext : null;
     } catch {
       return null;
     }
-
-    return null;
   }
 
   /**

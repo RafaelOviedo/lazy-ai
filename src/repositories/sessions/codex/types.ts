@@ -25,9 +25,32 @@ export type SessionIndexRow = {
 };
 
 export type SessionMetaEvent = {
-  type: string;
+  type: "session_meta";
   payload?: {
     cwd?: string;
     model?: string;
   };
+};
+
+export type TurnContextEvent = {
+  type: "turn_context";
+  payload?: {
+    cwd?: string;
+    model?: string;
+  };
+};
+
+export type ThreadSettingsAppliedEvent = {
+  type: "event_msg";
+  payload?: {
+    type?: string;
+    thread_settings?: {
+      model?: string;
+    };
+  };
+};
+
+export type SessionContext = {
+  cwd?: string;
+  model?: string;
 };
