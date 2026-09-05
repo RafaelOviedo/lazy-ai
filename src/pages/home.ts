@@ -9,15 +9,8 @@ import { PageProps } from "./types.js";
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
 import { ensureContextPanelDefined } from "../components/ContextPanel/context-panel.js";
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+import { Keybindings } from "../app/keybindings.types.js";
+import { escapeHtml } from "../shared/lib/html/index.js";
 
 function shortSessionId(sessionId: string): string {
   return sessionId.slice(0, 8);
@@ -30,6 +23,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   document.body.innerHTML = `
     <div class="card">
+      <legend>v1.0.0</legend>
       <div class="container-for-1-and-2">
         <div class="container-1">
           <sessions-panel class="container-1-1" id="panel-1" tabindex="0"></sessions-panel>
@@ -53,12 +47,14 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       <footer class="keybindings">
         <legend>Keybindings:</legend>
         <div class="keybindings-content">
-          <span class="keybinding-color">h ↓ Previous panel</span> <span><></span>
-          <span class="keybinding-color">l ↑ Next panel</span> <span><></span> 
-          <span class="keybinding-color">j ↓  Next item</span> <span><></span>
-          <span class="keybinding-color">k ↑  Previous item</span> <span><></span>
-          <span class="keybinding-color">n New session</span> <span><></span>
-          <span class="keybinding-color">d Delete session</span> <span><></span>
+          <span class="keybinding-color">Previous panel: h ↓</span> <span>|</span>
+          <span class="keybinding-color">Next panel: l ↑</span> <span>|</span> 
+          <span class="keybinding-color">Next item: j ↓</span> <span>|</span>
+          <span class="keybinding-color">Previous item: k ↑</span> <span>|</span>
+          <span class="keybinding-color">New session: n</span> <span>|</span>
+          <span class="keybinding-color">Delete session: d</span> <span>|</span>
+          <span class="keybinding-color">Quit: q</span> <span>|</span>
+          <span class="keybinding-color">Help: ?</span>
           <!-- <span>1-4  Focus panel</span> -->
           <!-- <span>Esc  Back / close</span> -->
           <!-- <span>p  Prompt</span> -->
@@ -73,7 +69,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
           <!-- <span>gg  First item</span> -->
           <!-- <span>G  Last item</span> -->
           <!-- <span>Ctrl+p  Command palette</span> -->
-          <span class="keybinding-color">?  Help</span>
         </div>
       </footer>
     </div>
@@ -299,19 +294,19 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const key = event.key.toLowerCase();
     const active = document.activeElement;
 
-    if (!event.altKey && !event.ctrlKey && !event.metaKey && key === "q") {
+    if (!event.altKey && !event.ctrlKey && !event.metaKey && key === Keybindings.Q) {
       event.preventDefault();
       window.close();
       return;
     }
 
-    if (key !== "h" && key !== "l") return;
+    if (key !== Keybindings.H && key !== Keybindings.L) return;
 
     const currentIndex = panels.findIndex((panel) => panel === active);
 
     if (currentIndex === -1) return;
 
-    const direction = key === "l" ? 1 : -1;
+    const direction = key === Keybindings.L ? 1 : -1;
     const nextIndex = (currentIndex + direction + panels.length) % panels.length;
 
     event.preventDefault();
