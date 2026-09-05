@@ -29,7 +29,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureKeybindingsPanelDefined(window);
   ensureModalDefined(window);
 
-  const { openModal } = useModal();
+  const { getModalConfig, openModal } = useModal();
 
   document.body.innerHTML = `
     <div class="card">
@@ -193,6 +193,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
 
+    if (getModalConfig().isActive && getModalConfig().component === ModalName.helpInfoModal) return;
     if (handleModalShortcuts(event, key)) return;
     if (handleQuitShortcut(event, key)) return;
     if (handlePanelNavigation(event, key)) return;

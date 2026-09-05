@@ -79,7 +79,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
             justify-content: flex-start;
             width: 30%;
             min-height: 60%;
-            border: 1px solid #5fafff;
+            border: 1px solid #fff;
             border-radius: 5px;
           }
 

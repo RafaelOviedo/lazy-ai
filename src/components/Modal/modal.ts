@@ -24,6 +24,7 @@ export function ensureModalDefined(window: TermWindow): void {
   class AppModal extends window.HTMLElement {
     private readonly modal = useModal();
     private unsubscribe: (() => void) | null = null;
+    private previouslyFocusedElement: HTMLElement | null = null;
     private renderedComponent: ModalName | undefined;
     private readonly onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== Keybindings.ESCAPE || !this.modal.getModalConfig().isActive) return;
@@ -36,6 +37,10 @@ export function ensureModalDefined(window: TermWindow): void {
      * Subscribes to modal state when the root enters the document.
      */
     connectedCallback(): void {
+      if (!this.hasAttribute("tabindex")) {
+        this.tabIndex = 0;
+      }
+
       this.unsubscribe = this.modal.subscribe(() => this.render());
       this.ownerDocument.addEventListener("keydown", this.onKeyDown);
       this.render();
@@ -65,8 +70,11 @@ export function ensureModalDefined(window: TermWindow): void {
             }
           </style>
         `;
+        this.restorePreviousFocus();
         return;
       }
+
+      this.capturePreviousFocus();
 
       const modalComponent = modalComponentMap[modalConfig.component];
 
@@ -77,6 +85,7 @@ export function ensureModalDefined(window: TermWindow): void {
       }
 
       this.syncModalElement(modalConfig, modalComponent);
+      this.focus();
     }
 
     /**
@@ -121,6 +130,32 @@ export function ensureModalDefined(window: TermWindow): void {
      */
     private clearMemoizedContent(): void {
       this.renderedComponent = undefined;
+    }
+
+    /**
+     * Captures the element focused before the modal takes over keyboard input.
+     */
+    private capturePreviousFocus(): void {
+      if (this.previouslyFocusedElement) return;
+
+      const activeElement = this.ownerDocument.activeElement;
+
+      if (activeElement instanceof window.HTMLElement && activeElement !== this && !this.contains(activeElement)) {
+        this.previouslyFocusedElement = activeElement;
+      }
+    }
+
+    /**
+     * Returns focus to the element that had it before the modal opened.
+     */
+    private restorePreviousFocus(): void {
+      const elementToRestore = this.previouslyFocusedElement;
+
+      this.previouslyFocusedElement = null;
+
+      if (elementToRestore?.isConnected) {
+        elementToRestore.focus();
+      }
     }
   }
 
