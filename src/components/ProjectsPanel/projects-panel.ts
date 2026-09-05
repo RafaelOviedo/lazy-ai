@@ -19,11 +19,15 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     private projectReader: CodexProjectReader = new CodexProjectRepository();
     private projects: CodexProjectSummary[] = [];
     private selectedProjectIndex = 0;
+    private selectedSessionIndex = 0;
     private isLoading = true;
+    private hasFocus = false;
     private loadError: string | null = null;
 
     constructor() {
       super();
+      this.onBlur = this.onBlur.bind(this);
+      this.onFocus = this.onFocus.bind(this);
       this.onKeyDown = this.onKeyDown.bind(this);
     }
 
@@ -36,6 +40,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       }
 
       this.render();
+      this.addEventListener("blur", this.onBlur);
+      this.addEventListener("focus", this.onFocus);
       this.addEventListener("keydown", this.onKeyDown);
       void this.reload();
     }
@@ -44,6 +50,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
+      this.removeEventListener("blur", this.onBlur);
+      this.removeEventListener("focus", this.onFocus);
       this.removeEventListener("keydown", this.onKeyDown);
     }
 
@@ -116,6 +124,9 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
+      const titleClass = this.hasFocus ? "projects-panel__title is-focused" : "projects-panel__title";
+      const counterClass = this.hasFocus ? "projects-panel__counter is-focused" : "projects-panel__counter";
+
       this.innerHTML = `
         <style>
           projects-panel {
@@ -133,14 +144,21 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
+          .projects-panel__title {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            color: #5fafff;
+            border: 1px solid transparent;
+          }
+
+          .projects-panel__title.is-focused {
+            color: #fff;
+          }
+
           .projects-panel__content {
             overflow: scroll;
             max-height: 15px;
-          }
-
-          .projects-panel__title {
-            color: #5fafff;
-            border: 1px solid transparent;
           }
 
           .projects-panel__item {
@@ -165,13 +183,40 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
           .projects-panel__muted {
             color: #8aa4bf;
           }
+
+          .projects-panel__counter {
+            display: flex;
+            justify-content: flex-end;
+            color: #5fafff;
+          }
+          .projects-panel__counter.is-focused {
+            color: #fff;
+          }
         </style>
 
-        <legend class="projects-panel__title">Projects</legend>
+        <div>
+          <span class="${titleClass}">Projects <span class="${counterClass}">${this.renderSessionCountMarkup()}</span></span>
+        </div>
         <div class="projects-panel__content">
           ${this.renderContentMarkup()}
         </div>
       `;
+    }
+
+    /**
+     * Tracks when the panel loses focus so the title returns to its inactive color.
+     */
+    private onBlur(): void {
+      this.hasFocus = false;
+      this.render();
+    }
+
+    /**
+     * Tracks when the panel gains focus so the title uses the active color.
+     */
+    private onFocus(): void {
+      this.hasFocus = true;
+      this.render();
     }
 
     /**
@@ -276,8 +321,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       return this.projects.map((project, index) => {
         const marker = index === this.selectedProjectIndex ? "◉" : "○";
-        const selectedClass = index === this.selectedProjectIndex ? "projects-panel__item is-selected" : "projects-panel__item";
-        const selectedAttribute = index === this.selectedProjectIndex ? ' data-selected="true"' : "";
+        const selectedClass = index === this.selectedProjectIndex && this.hasFocus ? "projects-panel__item is-selected" : "projects-panel__item";
+        const selectedAttribute = index === this.selectedProjectIndex && this.hasFocus ? ' data-selected="true"' : "";
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
@@ -286,6 +331,17 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
         `;
       })
         .join("");
+    }
+
+    /**
+     * Builds the bottom-right session count and selected position label.
+     */
+    private renderSessionCountMarkup(): string {
+      if (this.isLoading) return "Loading";
+      if (this.loadError) return "Error";
+      if (this.projects.length === 0) return "(0)";
+
+      return `(${this.selectedSessionIndex + 1}/${this.projects.length})`;
     }
 
     /**

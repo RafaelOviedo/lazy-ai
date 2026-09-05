@@ -15,7 +15,14 @@ export function ensureContextPanelDefined(window: TermWindow): void {
   class ContextPanel extends window.HTMLElement {
     private projectNameValue = "";
     private projectPathValue = "";
+    private hasFocus = false;
     private selectedSessionValue: CodexSessionSummary | null = null;
+
+    constructor() {
+      super();
+      this.onBlur = this.onBlur.bind(this);
+      this.onFocus = this.onFocus.bind(this);
+    }
 
     /**
      * Initializes the panel markup when the element is attached.
@@ -26,6 +33,16 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       }
 
       this.render();
+      this.addEventListener("blur", this.onBlur);
+      this.addEventListener("focus", this.onFocus);
+    }
+
+    /**
+     * Cleans up event bindings when the element leaves the document.
+     */
+    disconnectedCallback(): void {
+      this.removeEventListener("blur", this.onBlur);
+      this.removeEventListener("focus", this.onFocus);
     }
 
     /**
@@ -92,6 +109,8 @@ export function ensureContextPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
+      const titleClass = this.hasFocus ? "sessions-panel__title is-focused" : "sessions-panel__title";
+
       this.innerHTML = `
         <style>
           context-panel {
@@ -109,23 +128,21 @@ export function ensureContextPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
-          .context-panel__content {
-            padding: 0.5rem 1ch;
-            white-space: pre-wrap;
-          }
-
           .context-panel__title {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
             color: #5fafff;
             border: 1px solid transparent;
           }
 
-          .context-panel__session-row {
-            display: flex;
-            flex-direction: row;
-            justify-content: center;
-            align-items: flex-start;
-            height: 10px;
-            border: 1px solid red;
+          .context-panel__title.is-focused {
+            color: #fff;
+          }
+
+          .context-panel__content {
+            overflow: scroll;
+            max-height: 15px;
           }
 
           .context-panel__muted {
@@ -133,11 +150,29 @@ export function ensureContextPanelDefined(window: TermWindow): void {
           }
         </style>
 
-        <legend class="context-panel__title">Context</legend>
+        <div>
+          <span class="${titleClass}">Context</span>
+        </div>
         <div class="context-panel__content">
           ${this.renderContentMarkup()}
         </div>
       `;
+    }
+
+    /**
+     * Tracks when the panel loses focus so the title returns to its inactive color.
+     */
+    private onBlur(): void {
+      this.hasFocus = false;
+      this.render();
+    }
+
+    /**
+     * Tracks when the panel gains focus so the title uses the active color.
+     */
+    private onFocus(): void {
+      this.hasFocus = true;
+      this.render();
     }
 
     /**
@@ -156,7 +191,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       }
 
       return `
-        <div class="context-panel__session-row">
+        <div>
           <div class="context-panel__muted">Session ID</div> · <div>${this.escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · <div class="context-panel__muted">Model</div><div>${this.escapeHtml(this.selectedSessionValue.model)}</div><div class="context-panel__muted">Updated</div><div>${this.escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
         </div>
       `;

@@ -186,7 +186,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           .sessions-panel__counter {
             display: flex;
             justify-content: flex-end;
-            color: #8aa4bf;
+            color: #5fafff;
           }
           .sessions-panel__counter.is-focused {
             color: #fff;
@@ -297,8 +297,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       return this.sessions.map((session, index) => {
         const marker = index === this.selectedSessionIndex ? "◉" : "○";
-        const selectedClass = index === this.selectedSessionIndex ? "sessions-panel__item is-selected" : "sessions-panel__item";
-        const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
+        const selectedClass = index === this.selectedSessionIndex && this.hasFocus ? "sessions-panel__item is-selected" : "sessions-panel__item";
+        const selectedAttribute = index === this.selectedSessionIndex && this.hasFocus ? ' data-selected="true"' : "";
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
