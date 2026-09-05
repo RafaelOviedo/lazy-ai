@@ -131,7 +131,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           sessions-panel {
             display: block;
             width: fit-content;
-            height: 37%;
+            min-height: 30%;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;

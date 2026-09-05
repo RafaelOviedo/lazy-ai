@@ -112,7 +112,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
           context-panel {
             display: block;
             width: fit-content;
-            height: 29%;
+            min-height: 30%;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
@@ -172,7 +172,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
       return `
         <div>
-          <div class="context-panel__muted">Session ID</div> · <div>${escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div><div class="context-panel__muted">Updated</div><div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
+          <div class="context-panel__muted">Session ID</div> <div>${escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div> · <div class="context-panel__muted">Updated</div><div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
         </div>
       `;
     }

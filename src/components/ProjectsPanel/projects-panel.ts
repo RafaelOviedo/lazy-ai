@@ -133,7 +133,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
           projects-panel {
             display: block;
             width: fit-content;
-            height: 39%;
+            min-height: 10%;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
