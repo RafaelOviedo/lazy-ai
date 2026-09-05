@@ -49,6 +49,34 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         <legend style="color: #5fafff;">Current status</legend>
         <div class="footer-content" id="status-content"></div>
       </footer>
+
+      <footer class="keybindings">
+        <legend>Keybindings:</legend>
+        <div class="keybindings-content">
+          <span class="keybinding-color">h ↓ Previous panel</span> <span>-</span>
+          <span class="keybinding-color">l ↑ Next panel</span> <span>-</span> 
+          <span class="keybinding-color">j ↓  Next item</span> <span>-</span>
+          <span class="keybinding-color">k ↑  Previous item</span> <span>-</span>
+          <span class="keybinding-color">Tab Next panel</span> <span>-</span>
+          <span class="keybinding-color">Shift+Tab Previous panel</span> <span>-</span>
+          <span class="keybinding-color">n New session</span> <span>-</span>
+          <!-- <span>1-4  Focus panel</span> -->
+          <!-- <span>Esc  Back / close</span> -->
+          <!-- <span>p  Prompt</span> -->
+          <!-- <span>r  Resume session</span> -->
+          <!-- <span>R  Rename session</span> -->
+          <!-- <span>x  Stop session</span> -->
+          <!-- <span>d  Delete session</span> -->
+          <!-- <span>b  Change backend</span> -->
+          <!-- <span>m  Change model</span> -->
+          <!-- <span>g  Change project</span> -->
+          <!-- <span>f  Filter sessions</span> -->
+          <!-- <span>gg  First item</span> -->
+          <!-- <span>G  Last item</span> -->
+          <!-- <span>Ctrl+p  Command palette</span> -->
+          <span class="keybinding-color">?  Help</span>
+        </div>
+      </footer>
     </div>
 
     <style>
@@ -70,6 +98,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         justify-content: space-evenly;
         width: 98%;
         height: 90%;
+        /* border: 1px solid red; */
       }
 
       .container-1 {
@@ -127,9 +156,25 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
       .footer {
         width: 97.5%;
-        height: 10%;
+        height: 5%;
         border: 1px solid #5fafff;
         border-radius: 5px;
+        /* border: 1px solid red; */
+      }
+
+      .keybindings {
+        display: flex;
+        /* flex-direction: column; */
+        justify-content: flex-start;
+        align-items: center;
+        width: 97.5%;
+        height: 5%;
+        border: 1px solid #5fafff;
+        border-radius: 5px;
+        /* border: 1px solid red; */
+      }
+      .keybinding-color {
+        color: #5fafff;
       }
     </style>
   `;
@@ -261,6 +306,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
     const active = document.activeElement;
+
+    if (!event.altKey && !event.ctrlKey && !event.metaKey && key === "q") {
+      event.preventDefault();
+      window.close();
+      return;
+    }
 
     if (key !== "h" && key !== "l") return;
 
