@@ -1,6 +1,7 @@
 import type { CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 import type { TermWindow } from "./types.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { formatTokenCount, renderTokenBar } from "../../shared/lib/tokens/index.js";
 import { useFocusable } from "../../composables/useFocusable.js";
 
 /**
@@ -138,11 +139,19 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
           .context-panel__content {
             overflow: scroll;
-            max-height: 15px;
+            min-height: 14px;
           }
 
           .context-panel__muted {
             color: #8aa4bf;
+          }
+
+          .context-panel__usage {
+            margin-top: 0.5rem;
+          }
+
+          .context-panel__bar {
+            color: #5fafff;
           }
         </style>
 
@@ -172,7 +181,35 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
       return `
         <div>
-          <div class="context-panel__muted">Session ID</div> <div>${escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div> · <div class="context-panel__muted">Updated</div><div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
+          <div class="context-panel__muted">Session ID</div>
+          <div>${escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · 
+          <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div> · <div class="context-panel__muted">Updated</div>
+          <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
+          ${this.renderContextUsageMarkup()}
+        </div>
+      `;
+    }
+
+    /**
+     * Builds the selected session's context usage display.
+     */
+    private renderContextUsageMarkup(): string {
+      if (!this.selectedSessionValue?.contextUsage) {
+        return `
+          <div class="context-panel__usage">
+            <div class="context-panel__muted">Context usage</div>
+            <div>usage unavailable</div>
+          </div>
+        `;
+      }
+
+      const { maxTokens, percent, usedTokens } = this.selectedSessionValue.contextUsage;
+
+      return `
+        <div class="context-panel__usage">
+          <div class="context-panel__muted">Context usage</div>
+          <div class="context-panel__bar">${renderTokenBar(percent)} ${percent}%/100%</div>
+          <div>${formatTokenCount(usedTokens)} / ${formatTokenCount(maxTokens)} tokens</div>
         </div>
       `;
     }

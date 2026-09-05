@@ -10,6 +10,7 @@ import type {
   SessionIndexRow,
   SessionMetaEvent,
   ThreadSettingsAppliedEvent,
+  TokenCountEvent,
   TurnContextEvent,
 } from "./types";
 
@@ -62,6 +63,7 @@ export class CodexSessionRepository implements CodexSessionReader {
         projectPath: sessionContext.cwd,
         projectName: basename(sessionContext.cwd) || sessionContext.cwd,
         model: sessionContext.model ?? "unknown",
+        contextUsage: sessionContext.contextUsage,
         status: "saved",
       });
     }
@@ -100,7 +102,7 @@ export class CodexSessionRepository implements CodexSessionReader {
 
         if (!trimmedLine) continue;
 
-        const record = JSON.parse(trimmedLine) as SessionMetaEvent | ThreadSettingsAppliedEvent | TurnContextEvent;
+        const record = JSON.parse(trimmedLine) as SessionMetaEvent | ThreadSettingsAppliedEvent | TokenCountEvent | TurnContextEvent;
 
         if (record.type === "session_meta" && record.payload) {
           sessionContext.cwd = record.payload.cwd ?? sessionContext.cwd;
@@ -116,6 +118,20 @@ export class CodexSessionRepository implements CodexSessionReader {
 
         if (record.type === "event_msg" && record.payload?.type === "thread_settings_applied") {
           sessionContext.model = record.payload.thread_settings?.model ?? sessionContext.model;
+          continue;
+        }
+
+        if (record.type === "event_msg" && record.payload?.type === "token_count") {
+          const usedTokens = record.payload.info?.last_token_usage?.input_tokens;
+          const maxTokens = record.payload.info?.model_context_window;
+
+          if (this.isPositiveNumber(usedTokens) && this.isPositiveNumber(maxTokens)) {
+            sessionContext.contextUsage = {
+              usedTokens,
+              maxTokens,
+              percent: Math.min(100, Math.round((usedTokens / maxTokens) * 100)),
+            };
+          }
         }
       }
 
@@ -123,6 +139,13 @@ export class CodexSessionRepository implements CodexSessionReader {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Checks whether a parsed JSON value is a usable positive number.
+   */
+  private isPositiveNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value > 0;
   }
 
   /**

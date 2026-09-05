@@ -15,7 +15,14 @@ export type CodexSessionSummary = {
   projectPath: string;
   projectName: string;
   model: string;
+  contextUsage?: ContextUsage;
   status: string;
+};
+
+export type ContextUsage = {
+  usedTokens: number;
+  maxTokens: number;
+  percent: number;
 };
 
 export type SessionIndexRow = {
@@ -43,9 +50,22 @@ export type TurnContextEvent = {
 export type ThreadSettingsAppliedEvent = {
   type: "event_msg";
   payload?: {
-    type?: string;
+    type: "thread_settings_applied";
     thread_settings?: {
       model?: string;
+    };
+  };
+};
+
+export type TokenCountEvent = {
+  type: "event_msg";
+  payload?: {
+    type: "token_count";
+    info?: {
+      last_token_usage?: {
+        input_tokens?: number;
+      };
+      model_context_window?: number;
     };
   };
 };
@@ -53,4 +73,5 @@ export type ThreadSettingsAppliedEvent = {
 export type SessionContext = {
   cwd?: string;
   model?: string;
+  contextUsage?: ContextUsage;
 };
