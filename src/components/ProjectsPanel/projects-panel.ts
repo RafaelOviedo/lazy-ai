@@ -1,5 +1,7 @@
 import { CodexProjectRepository } from "../../repositories/projects/codex/index.js";
+
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { useFocusable } from "../../composables/useFocusable.js";
 
 import type { CodexProjectReader, CodexProjectSummary } from "../../repositories/projects/codex/types.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
@@ -22,13 +24,11 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     private selectedProjectIndex = 0;
     private selectedSessionIndex = 0;
     private isLoading = true;
-    private hasFocus = false;
     private loadError: string | null = null;
+    private readonly focusable = useFocusable(() => this.render());
 
     constructor() {
       super();
-      this.onBlur = this.onBlur.bind(this);
-      this.onFocus = this.onFocus.bind(this);
       this.onKeyDown = this.onKeyDown.bind(this);
     }
 
@@ -41,8 +41,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       }
 
       this.render();
-      this.addEventListener("blur", this.onBlur);
-      this.addEventListener("focus", this.onFocus);
+      this.addEventListener("blur", this.focusable.onBlur);
+      this.addEventListener("focus", this.focusable.onFocus);
       this.addEventListener("keydown", this.onKeyDown);
       void this.reload();
     }
@@ -51,8 +51,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
-      this.removeEventListener("blur", this.onBlur);
-      this.removeEventListener("focus", this.onFocus);
+      this.removeEventListener("blur", this.focusable.onBlur);
+      this.removeEventListener("focus", this.focusable.onFocus);
       this.removeEventListener("keydown", this.onKeyDown);
     }
 
@@ -125,8 +125,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      const titleClass = this.hasFocus ? "projects-panel__title is-focused" : "projects-panel__title";
-      const counterClass = this.hasFocus ? "projects-panel__counter is-focused" : "projects-panel__counter";
+      const titleClass = this.focusable.hasFocus ? "projects-panel__title is-focused" : "projects-panel__title";
+      const counterClass = this.focusable.hasFocus ? "projects-panel__counter is-focused" : "projects-panel__counter";
 
       this.innerHTML = `
         <style>
@@ -202,22 +202,6 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
           ${this.renderContentMarkup()}
         </div>
       `;
-    }
-
-    /**
-     * Tracks when the panel loses focus so the title returns to its inactive color.
-     */
-    private onBlur(): void {
-      this.hasFocus = false;
-      this.render();
-    }
-
-    /**
-     * Tracks when the panel gains focus so the title uses the active color.
-     */
-    private onFocus(): void {
-      this.hasFocus = true;
-      this.render();
     }
 
     /**
@@ -322,8 +306,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       return this.projects.map((project, index) => {
         const marker = index === this.selectedProjectIndex ? "◉" : "○";
-        const selectedClass = index === this.selectedProjectIndex && this.hasFocus ? "projects-panel__item is-selected" : "projects-panel__item";
-        const selectedAttribute = index === this.selectedProjectIndex && this.hasFocus ? ' data-selected="true"' : "";
+        const selectedClass = index === this.selectedProjectIndex && this.focusable.hasFocus ? "projects-panel__item is-selected" : "projects-panel__item";
+        const selectedAttribute = index === this.selectedProjectIndex && this.focusable.hasFocus ? ' data-selected="true"' : "";
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>

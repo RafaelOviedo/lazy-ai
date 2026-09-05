@@ -1,6 +1,7 @@
 import type { CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 import type { TermWindow } from "./types.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { useFocusable } from "../../composables/useFocusable.js";
 
 /**
  * Registers the Context panel custom element against a TermDOM window.
@@ -16,14 +17,8 @@ export function ensureContextPanelDefined(window: TermWindow): void {
   class ContextPanel extends window.HTMLElement {
     private projectNameValue = "";
     private projectPathValue = "";
-    private hasFocus = false;
     private selectedSessionValue: CodexSessionSummary | null = null;
-
-    constructor() {
-      super();
-      this.onBlur = this.onBlur.bind(this);
-      this.onFocus = this.onFocus.bind(this);
-    }
+    private readonly focusable = useFocusable(() => this.render());
 
     /**
      * Initializes the panel markup when the element is attached.
@@ -34,16 +29,16 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       }
 
       this.render();
-      this.addEventListener("blur", this.onBlur);
-      this.addEventListener("focus", this.onFocus);
+      this.addEventListener("blur", this.focusable.onBlur);
+      this.addEventListener("focus", this.focusable.onFocus);
     }
 
     /**
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
-      this.removeEventListener("blur", this.onBlur);
-      this.removeEventListener("focus", this.onFocus);
+      this.removeEventListener("blur", this.focusable.onBlur);
+      this.removeEventListener("focus", this.focusable.onFocus);
     }
 
     /**
@@ -110,7 +105,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      const titleClass = this.hasFocus ? "context-panel__title is-focused" : "context-panel__title";
+      const titleClass = this.focusable.hasFocus ? "context-panel__title is-focused" : "context-panel__title";
 
       this.innerHTML = `
         <style>
@@ -158,22 +153,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
           ${this.renderContentMarkup()}
         </div>
       `;
-    }
-
-    /**
-     * Tracks when the panel loses focus so the title returns to its inactive color.
-     */
-    private onBlur(): void {
-      this.hasFocus = false;
-      this.render();
-    }
-
-    /**
-     * Tracks when the panel gains focus so the title uses the active color.
-     */
-    private onFocus(): void {
-      this.hasFocus = true;
-      this.render();
     }
 
     /**
