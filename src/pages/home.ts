@@ -4,25 +4,25 @@ import { type SessionsPanelElement, type SessionSelectionChangeDetail } from "..
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
+import { type StatusPanelElement } from "../components/StatusPanel/types.js";
 
 import { PageProps } from "./types.js";
+import { Keybindings } from "../app/keybindings.types.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
 import { ensureContextPanelDefined } from "../components/ContextPanel/context-panel.js";
 import { ensureDetailsPanelDefined } from "../components/DetailsPanel/details-panel.js";
-import { Keybindings } from "../app/keybindings.types.js";
-import { escapeHtml } from "../shared/lib/html/index.js";
-
-function shortSessionId(sessionId: string): string {
-  return sessionId.slice(0, 8);
-}
+import { ensureStatusPanelDefined } from "../components/StatusPanel/status-panel.js";
+import { ensureKeybindingsPanelDefined } from "../components/KeybindingsPanel/keybindings-panel.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
   ensureProjectsPanelDefined(window);
   ensureContextPanelDefined(window);
   ensureDetailsPanelDefined(window);
+  ensureStatusPanelDefined(window);
+  ensureKeybindingsPanelDefined(window);
 
   document.body.innerHTML = `
     <div class="card">
@@ -39,38 +39,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         <details-panel id="details-panel"></details-panel>
       </div>
 
-      <footer class="footer">
-        <legend style="color: #5fafff;">Current status</legend>
-        <div class="footer-content" id="status-content"></div>
-      </footer>
+      <status-panel id="status-panel"></status-panel>
 
-      <footer class="keybindings">
-        <legend>Keybindings:</legend>
-        <div class="keybindings-content">
-          <span class="keybinding-color">Previous panel: h ↓</span> <span>|</span>
-          <span class="keybinding-color">Next panel: l ↑</span> <span>|</span> 
-          <span class="keybinding-color">Next item: j ↓</span> <span>|</span>
-          <span class="keybinding-color">Previous item: k ↑</span> <span>|</span>
-          <span class="keybinding-color">New session: n</span> <span>|</span>
-          <span class="keybinding-color">Delete session: d</span> <span>|</span>
-          <span class="keybinding-color">Quit: q</span> <span>|</span>
-          <span class="keybinding-color">Help: ?</span>
-          <!-- <span>1-4  Focus panel</span> -->
-          <!-- <span>Esc  Back / close</span> -->
-          <!-- <span>p  Prompt</span> -->
-          <!-- <span>r  Resume session</span> -->
-          <!-- <span>R  Rename session</span> -->
-          <!-- <span>x  Stop session</span> -->
-          <!-- <span>d  Delete session</span> -->
-          <!-- <span>b  Change backend</span> -->
-          <!-- <span>m  Change model</span> -->
-          <!-- <span>g  Change project</span> -->
-          <!-- <span>f  Filter sessions</span> -->
-          <!-- <span>gg  First item</span> -->
-          <!-- <span>G  Last item</span> -->
-          <!-- <span>Ctrl+p  Command palette</span> -->
-        </div>
-      </footer>
+      <keybindings-panel></keybindings-panel>
     </div>
 
     <style>
@@ -123,32 +94,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         border-color: #fff;
       }
 
-      .footer-content {
-        padding: 0.5rem 1ch;
-      }
-
-      .footer {
-        width: 97.5%;
-        height: 5%;
-        border: 1px solid #5fafff;
-        border-radius: 5px;
-        /* border: 1px solid red; */
-      }
-
-      .keybindings {
-        display: flex;
-        /* flex-direction: column; */
-        justify-content: flex-start;
-        align-items: center;
-        width: 97.5%;
-        height: 5%;
-        border: 1px solid #5fafff;
-        border-radius: 5px;
-        /* border: 1px solid red; */
-      }
-      .keybinding-color {
-        color: #5fafff;
-      }
     </style>
   `;
 
@@ -156,8 +101,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const panel2 = document.getElementById("panel-2");
   const panel3 = document.getElementById("panel-3");
   const detailsPanelElement = document.getElementById("details-panel");
-
-  const statusContent = document.getElementById("status-content");
+  const statusPanelElement = document.getElementById("status-panel");
 
   const panels = [panel1, panel2, panel3].filter((panel): panel is NonNullable<typeof panel1> => panel !== null);
 
@@ -176,9 +120,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const projectsPanel = panel2 as ProjectsPanelElement | null;
   const contextPanel = panel3 as ContextPanelElement | null;
   const detailsPanel = detailsPanelElement as DetailsPanelElement | null;
+  const statusPanel = statusPanelElement as StatusPanelElement | null;
 
-  function getSelectedSession(): CodexSessionSummary | null {
-    return selectedSession;
+  function renderPanels() {
+    syncDetailsPanel();
+    syncStatusPanel();
   }
 
   function syncDetailsPanel() {
@@ -187,32 +133,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     detailsPanel.selectedSession = selectedSession;
   }
 
-  function renderStatusBar() {
-    if (!statusContent) return;
+  function syncStatusPanel() {
+    if (!statusPanel) return;
 
-    const selectedSession = getSelectedSession();
-
-    if (projectLoadError) {
-      statusContent.innerHTML = escapeHtml(projectLoadError);
-      return;
-    }
-
-    if (loadError) {
-      statusContent.innerHTML = escapeHtml(loadError);
-      return;
-    }
-
-    if (!selectedSession) {
-      statusContent.innerHTML = "Sessions panel ready. No saved session selected.";
-      return;
-    }
-
-    statusContent.innerHTML = `Codex · ${escapeHtml(selectedSession.status)} · ${escapeHtml(selectedSession.relativeUpdated)} · ${escapeHtml(shortSessionId(selectedSession.id))}`;
-  }
-
-  function renderPanels() {
-    syncDetailsPanel();
-    renderStatusBar();
+    statusPanel.projectLoadError = projectLoadError;
+    statusPanel.loadError = loadError;
+    statusPanel.selectedSession = selectedSession;
   }
 
   function syncContextPanel() {
