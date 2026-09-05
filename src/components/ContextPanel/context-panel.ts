@@ -1,7 +1,7 @@
 import type { CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 import type { TermWindow } from "./types.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
-import { formatTokenCount, renderTokenBar } from "../../shared/lib/tokens/index.js";
+import { formatTokenCount, getTokenBarSegments } from "../../shared/lib/tokens/index.js";
 import { useFocusable } from "../../composables/useFocusable.js";
 
 /**
@@ -150,8 +150,16 @@ export function ensureContextPanelDefined(window: TermWindow): void {
             margin-top: 0.5rem;
           }
 
-          .context-panel__bar {
-            color: #5fafff;
+          .context-panel__done {
+            color: #43B53E;
+          }
+
+          .context-panel__rest {
+            color: #444;
+          }
+
+          .context-panel__pct {
+            color: #888;
           }
         </style>
 
@@ -204,11 +212,15 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       }
 
       const { maxTokens, percent, usedTokens } = this.selectedSessionValue.contextUsage;
+      const tokenBar = getTokenBarSegments(percent);
 
       return `
         <div class="context-panel__usage">
           <div class="context-panel__muted">Context usage</div>
-          <div class="context-panel__bar">${renderTokenBar(percent)} ${percent}%/100%</div>
+          <div>
+            <span class="context-panel__done">${tokenBar.done}</span><span class="context-panel__rest">${tokenBar.rest}</span>
+            <span class="context-panel__pct">${percent}%/100%</span>
+          </div>
           <div>${formatTokenCount(usedTokens)} / ${formatTokenCount(maxTokens)} tokens</div>
         </div>
       `;

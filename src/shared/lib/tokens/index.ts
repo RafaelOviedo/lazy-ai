@@ -1,2 +1,2 @@
 export { formatTokenCount } from "./format-token-count.js";
-export { renderTokenBar } from "./render-token-bar.js";
+export { getTokenBarSegments } from "./render-token-bar.js";
