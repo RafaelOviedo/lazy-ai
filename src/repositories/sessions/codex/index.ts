@@ -12,6 +12,8 @@ import type {
   ThreadSettingsAppliedEvent,
   TokenCountEvent,
   TurnContextEvent,
+  UsageLimit,
+  UsageLimitSnapshot,
 } from "./types";
 
 /**
@@ -64,11 +66,31 @@ export class CodexSessionRepository implements CodexSessionReader {
         projectName: basename(sessionContext.cwd) || sessionContext.cwd,
         model: sessionContext.model ?? "unknown",
         contextUsage: sessionContext.contextUsage,
+        usageLimit: sessionContext.usageLimit,
         status: "saved",
       });
     }
 
     return sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  /**
+   * Returns the newest Codex usage-limit snapshot seen in any persisted session.
+   */
+  async getLatestUsageLimit(): Promise<UsageLimitSnapshot | null> {
+    const sessionFiles = await this.findSessionFiles(this.sessionsDirectoryPath);
+    let latestSnapshot: UsageLimitSnapshot | null = null;
+
+    for (const sessionFilePath of sessionFiles.values()) {
+      const snapshot = await this.readLatestUsageLimitSnapshot(sessionFilePath);
+
+      if (!snapshot) continue;
+      if (!latestSnapshot || snapshot.observedAt.localeCompare(latestSnapshot.observedAt) > 0) {
+        latestSnapshot = snapshot;
+      }
+    }
+
+    return latestSnapshot;
   }
 
   /**
@@ -132,6 +154,10 @@ export class CodexSessionRepository implements CodexSessionReader {
               percent: Math.min(100, Math.round((usedTokens / maxTokens) * 100)),
             };
           }
+
+          if (record.payload.rate_limits) {
+            sessionContext.usageLimit = this.readUsageLimit(record.payload.rate_limits, sessionContext.usageLimit);
+          }
         }
       }
 
@@ -142,10 +168,91 @@ export class CodexSessionRepository implements CodexSessionReader {
   }
 
   /**
+   * Reads the latest usage-limit event from one persisted session file.
+   */
+  private async readLatestUsageLimitSnapshot(filePath: string): Promise<UsageLimitSnapshot | null> {
+    try {
+      const file = await readFile(filePath, "utf8");
+      const lines = file.split("\n");
+      let snapshot: UsageLimitSnapshot | null = null;
+      let previousUsageLimit: UsageLimit | undefined;
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        if (!trimmedLine) continue;
+
+        const record = JSON.parse(trimmedLine) as TokenCountEvent;
+
+        if (record.type !== "event_msg" || record.payload?.type !== "token_count" || !record.payload.rate_limits || !record.timestamp) {
+          continue;
+        }
+
+        previousUsageLimit = this.readUsageLimit(record.payload.rate_limits, previousUsageLimit);
+        snapshot = {
+          usageLimit: previousUsageLimit,
+          observedAt: record.timestamp,
+        };
+      }
+
+      return snapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Checks whether a parsed JSON value is a usable positive number.
    */
   private isPositiveNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value) && value > 0;
+  }
+
+  /**
+   * Converts Codex rate-limit telemetry into display-ready usage data.
+   */
+  private readUsageLimit(rateLimits: NonNullable<TokenCountEvent["payload"]>["rate_limits"], previous?: UsageLimit): UsageLimit {
+    const primary = this.readUsageLimitWindow(rateLimits?.primary) ?? previous?.primary;
+    const secondary = this.readUsageLimitWindow(rateLimits?.secondary) ?? previous?.secondary;
+
+    return {
+      limitId: rateLimits?.limit_id ?? previous?.limitId,
+      limitName: rateLimits && "limit_name" in rateLimits ? rateLimits.limit_name : previous?.limitName,
+      primary,
+      secondary,
+      credits: rateLimits?.credits
+        ? {
+            hasCredits: rateLimits.credits.has_credits,
+            unlimited: rateLimits.credits.unlimited,
+            balance: rateLimits.credits.balance,
+          }
+        : previous?.credits,
+      planType: rateLimits?.plan_type ?? previous?.planType,
+      rateLimitReachedType: rateLimits && "rate_limit_reached_type" in rateLimits ? rateLimits.rate_limit_reached_type : previous?.rateLimitReachedType,
+    };
+  }
+
+  /**
+   * Converts one Codex limit window into bounded percentages.
+   */
+  private readUsageLimitWindow(windowUsage: NonNullable<NonNullable<TokenCountEvent["payload"]>["rate_limits"]>["primary"]): UsageLimit["primary"] {
+    const usedPercent = windowUsage?.used_percent;
+
+    if (!this.isPercentNumber(usedPercent)) return undefined;
+
+    return {
+      usedPercent,
+      remainingPercent: Math.max(0, 100 - usedPercent),
+      windowMinutes: this.isPositiveNumber(windowUsage?.window_minutes) ? windowUsage.window_minutes : undefined,
+      resetsAt: this.isPositiveNumber(windowUsage?.resets_at) ? windowUsage.resets_at : undefined,
+    };
+  }
+
+  /**
+   * Checks whether a parsed JSON value is a bounded percentage.
+   */
+  private isPercentNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
   }
 
   /**

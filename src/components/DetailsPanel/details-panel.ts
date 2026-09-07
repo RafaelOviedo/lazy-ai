@@ -53,7 +53,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           details-panel {
             display: block;
             width: 67%;
-            height: 87%;
+            height: 82%;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;

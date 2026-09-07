@@ -189,8 +189,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
       return `
         <div>
-          <div class="context-panel__muted">Session ID</div>
-          <div>${escapeHtml(this.shortSessionId(this.selectedSessionValue.id))}</div> · 
           <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div> · <div class="context-panel__muted">Updated</div>
           <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
           ${this.renderContextUsageMarkup()}
@@ -225,14 +223,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
         </div>
       `;
     }
-
-    /**
-     * Returns the compact session id used in panel summaries.
-     */
-    private shortSessionId(sessionId: string): string {
-      return sessionId.slice(0, 8);
-    }
-
   }
 
   window.customElements.define("context-panel", ContextPanel);

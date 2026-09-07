@@ -1,4 +1,5 @@
-import type { CodexSessionSummary } from "../repositories/sessions/codex/types.js";
+import type { CodexSessionSummary, UsageLimitSnapshot } from "../repositories/sessions/codex/types.js";
+import { CodexSessionRepository } from "../repositories/sessions/codex/index.js";
 
 import { type SessionsPanelElement, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
@@ -30,6 +31,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureModalDefined(window);
 
   const { getModalConfig, openModal } = useModal();
+  const sessionReader = new CodexSessionRepository();
 
   document.body.innerHTML = `
     <div class="card">
@@ -69,7 +71,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         flex-direction: row;
         justify-content: space-evenly;
         width: 98%;
-        height: 90%;
+        height: 85%;
       }
 
       .container-1 {
@@ -77,7 +79,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         flex-direction: column;
         justify-content: space-evenly;
         width: 30%;
-        height: 87%;
+        height: 82%;
       }
 
       .container-1-2 {
@@ -116,6 +118,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let selectedProjectName = initialProjectName;
 
   let selectedSession: CodexSessionSummary | null = null;
+  let usageLimitSnapshot: UsageLimitSnapshot | null = null;
 
   let loadError: string | null = null;
   let projectLoadError: string | null = null;
@@ -145,6 +148,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;
+    statusPanel.usageLimitSnapshot = usageLimitSnapshot;
   }
 
   function syncContextPanel() {
@@ -176,8 +180,19 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       selectedSession = null;
     }
 
+    void refreshUsageLimit();
     syncContextPanel();
     renderPanels();
+  }
+
+  async function refreshUsageLimit() {
+    try {
+      usageLimitSnapshot = await sessionReader.getLatestUsageLimit();
+    } catch {
+      usageLimitSnapshot = null;
+    }
+
+    syncStatusPanel();
   }
 
   function onSessionChange(event: Event) {
@@ -249,6 +264,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   if (sessionsPanel) {
     sessionsPanel.projectPath = projectPath;
   }
+
+  void refreshUsageLimit();
 
   renderPanels();
 
