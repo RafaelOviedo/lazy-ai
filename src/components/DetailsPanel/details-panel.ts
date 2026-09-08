@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { renderMarkdown } from "../../shared/lib/markdown/index.js";
 import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
 
 import type { CodexConversationMessage, CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
@@ -163,6 +164,74 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           .details-panel__message-text {
             color: #d7ecff;
           }
+
+          .details-markdown__heading {
+            color: #ffffff;
+            font-weight: bold;
+          }
+
+          .details-markdown__heading--1,
+          .details-markdown__heading--2 {
+            color: #5fafff;
+          }
+
+          .details-markdown__paragraph {
+            margin-bottom: 1px;
+          }
+
+          .details-markdown__list {
+            margin-bottom: 1px;
+          }
+
+          .details-markdown__list-item {
+            display: flex;
+            justify-content: flex-start;
+            align-items: flex-start;
+          }
+
+          .details-markdown__list-marker {
+            color: #8aa4bf;
+            width: 3ch;
+          }
+
+          .details-markdown__list-text {
+            color: #d7ecff;
+          }
+
+          .details-markdown__inline-code {
+            color: #d7ba7d;
+          }
+
+          .details-markdown__code-block {
+            border-left: 1px solid #5fafff;
+            margin-bottom: 1px;
+            padding-left: 1ch;
+          }
+
+          .details-markdown__code-language {
+            color: #8aa4bf;
+          }
+
+          .details-markdown__code {
+            color: #d7ba7d;
+            white-space: pre-wrap;
+          }
+
+          .details-markdown__quote {
+            border-left: 1px solid #8aa4bf;
+            color: #8aa4bf;
+            padding-left: 1ch;
+          }
+
+          .details-markdown__strong {
+            color: #ffffff;
+            font-weight: bold;
+          }
+
+          .details-markdown__em {
+            color: #d7ecff;
+            font-style: italic;
+          }
         </style>
 
         <div>
@@ -264,9 +333,20 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           <div class="details-panel__message-header">
             <span class="details-panel__message-role details-panel__message-role--${message.role}">${roleLabel}</span>${timestamp ? ` · ${escapeHtml(timestamp)}` : ""}
           </div>
-          <div class="details-panel__message-text">${escapeHtml(message.text)}</div>
+          <div class="details-panel__message-text">${this.renderMessageTextMarkup(message)}</div>
         </div>
       `;
+    }
+
+    /**
+     * Renders user text plainly and assistant output as terminal-friendly Markdown.
+     */
+    private renderMessageTextMarkup(message: CodexConversationMessage): string {
+      if (message.role === "assistant") {
+        return renderMarkdown(message.text);
+      }
+
+      return escapeHtml(message.text);
     }
 
     /**
