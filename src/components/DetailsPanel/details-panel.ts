@@ -1,6 +1,7 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
 
-import type { CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
+import type { CodexConversationMessage, CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 import type { TermWindow } from "./types.js";
 
 /**
@@ -16,12 +17,56 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
    */
   class DetailsPanel extends window.HTMLElement {
     private selectedSessionValue: CodexSessionSummary | null = null;
+    private sessionReader: CodexSessionReader = new CodexSessionRepository();
+    private messages: CodexConversationMessage[] = [];
+    private isLoading = false;
+    private loadError: string | null = null;
+    private loadVersion = 0;
+
+    constructor() {
+      super();
+      this.onKeyDown = this.onKeyDown.bind(this);
+    }
 
     /**
      * Initializes the panel markup when the element is attached.
      */
     connectedCallback(): void {
+      if (!this.hasAttribute("tabindex")) {
+        this.tabIndex = 0;
+      }
+
       this.render();
+      this.addEventListener("keydown", this.onKeyDown);
+
+      if (this.selectedSessionValue) {
+        void this.loadConversation();
+      }
+    }
+
+    /**
+     * Cleans up event bindings when the element leaves the document.
+     */
+    disconnectedCallback(): void {
+      this.removeEventListener("keydown", this.onKeyDown);
+    }
+
+    /**
+     * Allows the page to replace the session reader implementation if needed.
+     */
+    set repository(value: CodexSessionReader) {
+      this.sessionReader = value;
+
+      if (this.isConnected && this.selectedSessionValue) {
+        void this.loadConversation();
+      }
+    }
+
+    /**
+     * Returns the session reader used to load selected session details.
+     */
+    get repository(): CodexSessionReader {
+      return this.sessionReader;
     }
 
     /**
@@ -33,7 +78,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.selectedSessionValue = value;
 
       if (this.isConnected) {
-        this.render();
+        void this.loadConversation();
       }
     }
 
@@ -60,13 +105,25 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
             overflow: hidden;
           }
 
+          details-panel:focus {
+            border-color: #fff;
+            outline: none;
+          }
+
+          details-panel:focus .details-panel__title {
+            color: #fff;
+          }
+
           .details-panel__title {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
             color: #5fafff;
           }
 
           .details-panel__content {
-            padding: 0.5rem 1ch;
-            white-space: pre-wrap;
+            height: 92%;
+            overflow: scroll;
           }
 
           .details-panel__session-title {
@@ -75,6 +132,36 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
           .details-panel__muted {
             color: #8aa4bf;
+          }
+
+          .details-panel__message {
+            border-top: 1px solid #ccc;
+            padding: 1px;
+            margin: 0;
+          }
+
+          .details-panel__message-header {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            color: #8aa4bf;
+          }
+
+          .details-panel__message-role {
+            margin-bottom: 1px;
+            font-weight: bold;
+          }
+
+          .details-panel__message-role--user {
+            color: #5fafff;
+          }
+
+          .details-panel__message-role--assistant {
+            color: #43B53E;
+          }
+
+          .details-panel__message-text {
+            color: #d7ecff;
           }
         </style>
 
@@ -94,13 +181,182 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (!this.selectedSessionValue) {
         return `
           <div>No session selected yet.</div>
-          <div class="details-panel__muted" style="margin-top: 0.5rem;">This panel will show transcript and tool activity once session interaction is wired in.</div>
+          <div class="details-panel__muted" style="margin-top: 0.5rem;">Select a saved session to inspect its conversation.</div>
+        `;
+      }
+
+      if (this.isLoading) {
+        return `
+          <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
+          <div class="details-panel__muted" style="margin-top: 0.5rem;">Loading conversation...</div>
+        `;
+      }
+
+      if (this.loadError) {
+        return `
+          <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
+          <div style="margin-top: 0.5rem;">${escapeHtml(this.loadError)}</div>
+        `;
+      }
+
+      if (this.messages.length === 0) {
+        return `
+          <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
+          <div class="details-panel__muted" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>
         `;
       }
 
       return `
         <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
+        <div>
+          ${this.messages.map((message) => this.renderMessageMarkup(message)).join("")}
+        </div>
       `;
+    }
+
+    /**
+     * Loads the selected session transcript.
+     */
+    private async loadConversation(): Promise<void> {
+      const selectedSession = this.selectedSessionValue;
+      const loadVersion = ++this.loadVersion;
+
+      this.messages = [];
+      this.loadError = null;
+
+      if (!selectedSession) {
+        this.isLoading = false;
+        this.render();
+        return;
+      }
+
+      this.isLoading = true;
+      this.render();
+
+      try {
+        const conversation = await this.sessionReader.getConversation(selectedSession.id);
+
+        if (loadVersion !== this.loadVersion) return;
+
+        this.messages = conversation.messages;
+        this.isLoading = false;
+        this.render();
+        this.scrollToBottom();
+      } catch {
+        if (loadVersion !== this.loadVersion) return;
+
+        this.messages = [];
+        this.isLoading = false;
+        this.loadError = "Failed to load the selected session conversation.";
+        this.render();
+      }
+    }
+
+    /**
+     * Builds one transcript row.
+     */
+    private renderMessageMarkup(message: CodexConversationMessage): string {
+      const roleLabel = this.formatRoleLabel(message.role);
+      const timestamp = this.formatTimestamp(message.timestamp);
+
+      return `
+        <div class="details-panel__message" data-conversation-message="true">
+          <div class="details-panel__message-header">
+            <span class="details-panel__message-role details-panel__message-role--${message.role}">${roleLabel}</span>${timestamp ? ` · ${escapeHtml(timestamp)}` : ""}
+          </div>
+          <div class="details-panel__message-text">${escapeHtml(message.text)}</div>
+        </div>
+      `;
+    }
+
+    /**
+     * Formats a role for display in the transcript.
+     */
+    private formatRoleLabel(role: CodexConversationMessage["role"]): string {
+      if (role === "user") return "You";
+
+      return "Assistant";
+    }
+
+    /**
+     * Formats timestamps compactly for terminal display.
+     */
+    private formatTimestamp(timestamp?: string): string {
+      if (!timestamp) return "";
+
+      const date = new Date(timestamp);
+
+      if (Number.isNaN(date.getTime())) return "";
+
+      return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    /**
+     * Keeps the latest message visible when a conversation is loaded.
+     */
+    private scrollToBottom(): void {
+      const lastMessage = [...this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")].at(-1);
+      const content = this.querySelector<HTMLElement>(".details-panel__content");
+
+      if (lastMessage) {
+        lastMessage.scrollIntoView({ block: "end" });
+        return;
+      }
+
+      if (content) {
+        content.scrollTop = content.scrollHeight;
+      }
+    }
+
+    /**
+     * Supports keyboard scrolling when the details panel is focused.
+     */
+    private onKeyDown(event: KeyboardEvent): void {
+      const content = this.querySelector<HTMLElement>(".details-panel__content");
+
+      if (!content) return;
+
+      const key = event.key.toLowerCase();
+
+      if (key === "j" || key === "arrowdown") {
+        content.scrollTop += 4;
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "k" || key === "arrowup") {
+        content.scrollTop -= 4;
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "pagedown") {
+        content.scrollTop += 20;
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "pageup") {
+        content.scrollTop -= 20;
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "end") {
+        content.scrollTop = content.scrollHeight;
+        event.preventDefault();
+        return;
+      }
+
+      if (key === "home") {
+        content.scrollTop = 0;
+        event.preventDefault();
+      }
     }
   }
 

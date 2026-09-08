@@ -43,7 +43,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
           <context-panel class="container-1-3" id="panel-3" tabindex="0"></context-panel>
         </div>
 
-        <details-panel id="details-panel"></details-panel>
+        <details-panel id="details-panel" tabindex="0"></details-panel>
       </div>
 
       <status-panel id="status-panel"></status-panel>
@@ -111,7 +111,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const detailsPanelElement = document.getElementById("details-panel");
   const statusPanelElement = document.getElementById("status-panel");
 
-  const panels = [panel1, panel2, panel3].filter((panel): panel is NonNullable<typeof panel1> => panel !== null);
+  const panels = [panel1, panel2, panel3, detailsPanelElement].filter((panel): panel is HTMLElement => panel !== null);
 
   const initialProjectName = projectPath.split("/").filter(Boolean).at(-1) ?? projectPath;
   let selectedProjectPath = projectPath;
@@ -130,6 +130,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const contextPanel = panel3 as ContextPanelElement | null;
   const detailsPanel = detailsPanelElement as DetailsPanelElement | null;
   const statusPanel = statusPanelElement as StatusPanelElement | null;
+
+  if (detailsPanel) {
+    detailsPanel.repository = sessionReader;
+  }
 
   function renderPanels() {
     syncDetailsPanel();

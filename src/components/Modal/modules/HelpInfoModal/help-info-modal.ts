@@ -80,6 +80,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
             width: 30%;
             min-height: 60%;
             border: 1px solid #fff;
+            background: #000;
             border-radius: 5px;
           }
 

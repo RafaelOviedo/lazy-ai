@@ -3,9 +3,12 @@ import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
 import type {
+  CodexConversationMessage,
   CodexSessionReader,
+  CodexSessionConversation,
   CodexSessionRepositoryOptions,
   CodexSessionSummary,
+  CodexConversationRole,
   SessionContext,
   SessionIndexRow,
   SessionMetaEvent,
@@ -75,6 +78,26 @@ export class CodexSessionRepository implements CodexSessionReader {
   }
 
   /**
+   * Returns display-ready conversation messages for one persisted session.
+   */
+  async getConversation(sessionId: string): Promise<CodexSessionConversation> {
+    const sessionFiles = await this.findSessionFiles(this.sessionsDirectoryPath);
+    const sessionFilePath = sessionFiles.get(sessionId);
+
+    if (!sessionFilePath) {
+      return {
+        sessionId,
+        messages: [],
+      };
+    }
+
+    return {
+      sessionId,
+      messages: await this.readConversationMessages(sessionFilePath, sessionId),
+    };
+  }
+
+  /**
    * Returns the newest Codex usage-limit snapshot seen in any persisted session.
    */
   async getLatestUsageLimit(): Promise<UsageLimitSnapshot | null> {
@@ -108,6 +131,117 @@ export class CodexSessionRepository implements CodexSessionReader {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Extracts user-visible conversation items from a persisted session file.
+   */
+  private async readConversationMessages(filePath: string, sessionId: string): Promise<CodexConversationMessage[]> {
+    try {
+      const file = await readFile(filePath, "utf8");
+      const messages: CodexConversationMessage[] = [];
+
+      for (const [index, line] of file.split("\n").entries()) {
+        const trimmedLine = line.trim();
+
+        if (!trimmedLine) continue;
+
+        const record = this.parseJsonObject(trimmedLine);
+        const message = this.readConversationMessage(record, `${sessionId}:${index}`);
+
+        if (message) {
+          messages.push(message);
+        }
+      }
+
+      return messages;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Converts a raw Codex response item into a normalized conversation message.
+   */
+  private readConversationMessage(record: Record<string, unknown> | null, fallbackId: string): CodexConversationMessage | null {
+    if (!record || record.type !== "response_item" || !this.isObject(record.payload)) {
+      return null;
+    }
+
+    const payload = record.payload;
+    const payloadType = payload.type;
+    const timestamp = typeof record.timestamp === "string" ? record.timestamp : undefined;
+
+    if (payloadType === "message") {
+      const role = this.readConversationRole(payload.role);
+      const text = this.readContentText(payload.content).trim();
+
+      if (!role || !text) return null;
+
+      return {
+        id: this.readString(payload.id) ?? fallbackId,
+        role,
+        text,
+        timestamp,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Keeps hidden setup roles out of the user-facing transcript.
+   */
+  private readConversationRole(role: unknown): CodexConversationRole | null {
+    if (role === "user" || role === "assistant") return role;
+
+    return null;
+  }
+
+  /**
+   * Pulls readable text from Codex message content blocks.
+   */
+  private readContentText(content: unknown): string {
+    if (typeof content === "string") return content;
+
+    if (!Array.isArray(content)) return "";
+
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (!this.isObject(part)) return "";
+
+        return this.readString(part.text) ?? this.readString(part.content) ?? "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  /**
+   * Parses a JSON object and ignores non-object JSON values.
+   */
+  private parseJsonObject(value: string): Record<string, unknown> | null {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+
+      return this.isObject(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Checks for a plain object value.
+   */
+  private isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  /**
+   * Reads a non-empty string field.
+   */
+  private readString(value: unknown): string | null {
+    return typeof value === "string" && value.trim() ? value : null;
   }
 
   /**

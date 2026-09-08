@@ -2,6 +2,7 @@
 export interface CodexSessionReader {
   listByProject(projectPath?: string): Promise<CodexSessionSummary[]>;
   getLatestUsageLimit(): Promise<UsageLimitSnapshot | null>;
+  getConversation(sessionId: string): Promise<CodexSessionConversation>;
 }
 
 export type CodexSessionRepositoryOptions = {
@@ -26,6 +27,20 @@ export type ContextUsage = {
   maxTokens: number;
   percent: number;
 };
+
+export type CodexSessionConversation = {
+  sessionId: string;
+  messages: CodexConversationMessage[];
+};
+
+export type CodexConversationMessage = {
+  id: string;
+  role: CodexConversationRole;
+  text: string;
+  timestamp?: string;
+};
+
+export type CodexConversationRole = "user" | "assistant";
 
 export type UsageLimit = {
   limitId?: string;
