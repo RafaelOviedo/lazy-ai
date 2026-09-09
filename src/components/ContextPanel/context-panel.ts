@@ -2,7 +2,6 @@ import type { CodexSessionSummary } from "../../repositories/sessions/codex/type
 import type { TermWindow } from "./types.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { formatTokenCount, getTokenBarSegments } from "../../shared/lib/tokens/index.js";
-import { useFocusable } from "../../composables/useFocusable.js";
 
 /**
  * Registers the Context panel custom element against a TermDOM window.
@@ -19,7 +18,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
     private projectNameValue = "";
     private projectPathValue = "";
     private selectedSessionValue: CodexSessionSummary | null = null;
-    private readonly focusable = useFocusable(() => this.render());
 
     /**
      * Initializes the panel markup when the element is attached.
@@ -30,16 +28,12 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       }
 
       this.render();
-      this.addEventListener("blur", this.focusable.onBlur);
-      this.addEventListener("focus", this.focusable.onFocus);
     }
 
     /**
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
-      this.removeEventListener("blur", this.focusable.onBlur);
-      this.removeEventListener("focus", this.focusable.onFocus);
     }
 
     /**
@@ -106,8 +100,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      const titleClass = this.focusable.hasFocus ? "context-panel__title is-focused" : "context-panel__title";
-
       this.innerHTML = `
         <style>
           context-panel {
@@ -125,16 +117,16 @@ export function ensureContextPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
+          context-panel:focus .context-panel__title {
+            color: #fff;
+          }
+
           .context-panel__title {
             display: flex;
             justify-content: flex-start;
             align-items: center;
             color: #5fafff;
             border: 1px solid transparent;
-          }
-
-          .context-panel__title.is-focused {
-            color: #fff;
           }
 
           .context-panel__content {
@@ -164,7 +156,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
         </style>
 
         <div>
-          <span class="${titleClass}">Context</span>
+          <span class="context-panel__title">Context</span>
         </div>
         <div class="context-panel__content">
           ${this.renderContentMarkup()}

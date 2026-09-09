@@ -1,7 +1,6 @@
 import { CodexProjectRepository } from "../../repositories/projects/codex/index.js";
 
 import { escapeHtml } from "../../shared/lib/html/index.js";
-import { useFocusable } from "../../composables/useFocusable.js";
 
 import type { CodexProjectReader, CodexProjectSummary } from "../../repositories/projects/codex/types.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
@@ -25,11 +24,12 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     private selectedSessionIndex = 0;
     private isLoading = true;
     private loadError: string | null = null;
-    private readonly focusable = useFocusable(() => this.render());
 
     constructor() {
       super();
       this.onKeyDown = this.onKeyDown.bind(this);
+      this.onFocus = this.onFocus.bind(this);
+      this.onBlur = this.onBlur.bind(this);
     }
 
     /**
@@ -41,8 +41,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       }
 
       this.render();
-      this.addEventListener("blur", this.focusable.onBlur);
-      this.addEventListener("focus", this.focusable.onFocus);
+      this.addEventListener("focus", this.onFocus);
+      this.addEventListener("blur", this.onBlur);
       this.addEventListener("keydown", this.onKeyDown);
       void this.reload();
     }
@@ -51,8 +51,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
-      this.removeEventListener("blur", this.focusable.onBlur);
-      this.removeEventListener("focus", this.focusable.onFocus);
+      this.removeEventListener("focus", this.onFocus);
+      this.removeEventListener("blur", this.onBlur);
       this.removeEventListener("keydown", this.onKeyDown);
     }
 
@@ -125,9 +125,6 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      const titleClass = this.focusable.hasFocus ? "projects-panel__title is-focused" : "projects-panel__title";
-      const counterClass = this.focusable.hasFocus ? "projects-panel__counter is-focused" : "projects-panel__counter";
-
       this.innerHTML = `
         <style>
           projects-panel {
@@ -145,16 +142,22 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
+          projects-panel.is-focused .projects-panel__title,
+          projects-panel.is-focused .projects-panel__counter {
+            color: #fff;
+          }
+
+          projects-panel.is-focused .projects-panel__item.is-selected {
+            color: #ffffff;
+            background: #2E668C;
+          }
+
           .projects-panel__title {
             display: flex;
             justify-content: flex-start;
             align-items: center;
             color: #5fafff;
             border: 1px solid transparent;
-          }
-
-          .projects-panel__title.is-focused {
-            color: #fff;
           }
 
           .projects-panel__content {
@@ -170,9 +173,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
           }
 
           .projects-panel__item.is-selected {
-            color: #ffffff;
             height: 3px;
-            background: #2E668C;
           }
 
           .projects-panel__item-name {
@@ -190,13 +191,10 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
             justify-content: flex-end;
             color: #5fafff;
           }
-          .projects-panel__counter.is-focused {
-            color: #fff;
-          }
         </style>
 
         <div>
-          <span class="${titleClass}">Projects <span class="${counterClass}">${this.renderSessionCountMarkup()}</span></span>
+          <span class="projects-panel__title">Projects <span class="projects-panel__counter">${this.renderSessionCountMarkup()}</span></span>
         </div>
         <div class="projects-panel__content">
           ${this.renderContentMarkup()}
@@ -244,6 +242,20 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
         this.moveSelection(-1);
         event.preventDefault();
       }
+    }
+
+    /**
+     * Marks the host as focused without rebuilding the panel DOM.
+     */
+    private onFocus(): void {
+      this.classList.add("is-focused");
+    }
+
+    /**
+     * Clears focused host styling without rebuilding the panel DOM.
+     */
+    private onBlur(): void {
+      this.classList.remove("is-focused");
     }
 
     /**
@@ -306,8 +318,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       return this.projects.map((project, index) => {
         const marker = index === this.selectedProjectIndex ? "◉" : "○";
-        const selectedClass = index === this.selectedProjectIndex && this.focusable.hasFocus ? "projects-panel__item is-selected" : "projects-panel__item";
-        const selectedAttribute = index === this.selectedProjectIndex && this.focusable.hasFocus ? ' data-selected="true"' : "";
+        const selectedClass = index === this.selectedProjectIndex ? "projects-panel__item is-selected" : "projects-panel__item";
+        const selectedAttribute = index === this.selectedProjectIndex ? ' data-selected="true"' : "";
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>

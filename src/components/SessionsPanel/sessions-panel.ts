@@ -1,6 +1,5 @@
 import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
-import { useFocusable } from "../../composables/useFocusable.js";
 
 import type { CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 
@@ -24,11 +23,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private selectedSessionIndex = 0;
     private isLoading = true;
     private loadError: string | null = null;
-    private readonly focusable = useFocusable(() => this.render());
 
     constructor() {
       super();
       this.onKeyDown = this.onKeyDown.bind(this);
+      this.onFocus = this.onFocus.bind(this);
+      this.onBlur = this.onBlur.bind(this);
     }
 
     /**
@@ -40,8 +40,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       }
 
       this.render();
-      this.addEventListener("blur", this.focusable.onBlur);
-      this.addEventListener("focus", this.focusable.onFocus);
+      this.addEventListener("focus", this.onFocus);
+      this.addEventListener("blur", this.onBlur);
       this.addEventListener("keydown", this.onKeyDown);
 
       if (this.projectPathValue) {
@@ -53,8 +53,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
-      this.removeEventListener("blur", this.focusable.onBlur);
-      this.removeEventListener("focus", this.focusable.onFocus);
+      this.removeEventListener("focus", this.onFocus);
+      this.removeEventListener("blur", this.onBlur);
       this.removeEventListener("keydown", this.onKeyDown);
     }
 
@@ -123,9 +123,6 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      const titleClass = this.focusable.hasFocus ? "sessions-panel__title is-focused" : "sessions-panel__title";
-      const counterClass = this.focusable.hasFocus ? "sessions-panel__counter is-focused" : "sessions-panel__counter";
-
       this.innerHTML = `
         <style>
           sessions-panel {
@@ -143,16 +140,22 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             outline: none;
           }
 
+          sessions-panel.is-focused .sessions-panel__title,
+          sessions-panel.is-focused .sessions-panel__counter {
+            color: #fff;
+          }
+
+          sessions-panel.is-focused .sessions-panel__item.is-selected {
+            color: #ffffff;
+            background: #2E668C;
+          }
+
           .sessions-panel__title {
             display: flex;
             justify-content: flex-start;
             align-items: center;
             color: #5fafff;
             border: 1px solid transparent;
-          }
-
-          .sessions-panel__title.is-focused {
-            color: #fff;
           }
 
           .sessions-panel__content {
@@ -168,9 +171,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           }
 
           .sessions-panel__item.is-selected {
-            color: #ffffff;
             height: 3px;
-            background: #2E668C;
           }
 
           .sessions-panel__item-title {
@@ -188,13 +189,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             justify-content: flex-end;
             color: #5fafff;
           }
-          .sessions-panel__counter.is-focused {
-            color: #fff;
-          }
         </style>
 
         <div>
-          <span class="${titleClass}">Sessions <span class="${counterClass}">${this.renderSessionCountMarkup()}</span></span>
+          <span class="sessions-panel__title">Sessions <span class="sessions-panel__counter">${this.renderSessionCountMarkup()}</span></span>
         </div>
         <div class="sessions-panel__content">
           ${this.renderContentMarkup()}
@@ -244,6 +242,20 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Marks the host as focused without rebuilding the panel DOM.
+     */
+    private onFocus(): void {
+      this.classList.add("is-focused");
+    }
+
+    /**
+     * Clears focused host styling without rebuilding the panel DOM.
+     */
+    private onBlur(): void {
+      this.classList.remove("is-focused");
+    }
+
+    /**
      * Emits the selected session so the rest of the layout can stay in sync.
      */
     private dispatchSelectionChange(): void {
@@ -281,8 +293,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       return this.sessions.map((session, index) => {
         const marker = index === this.selectedSessionIndex ? "◉" : "○";
-        const selectedClass = index === this.selectedSessionIndex && this.focusable.hasFocus ? "sessions-panel__item is-selected" : "sessions-panel__item";
-        const selectedAttribute = index === this.selectedSessionIndex && this.focusable.hasFocus ? ' data-selected="true"' : "";
+        const selectedClass = index === this.selectedSessionIndex ? "sessions-panel__item is-selected" : "sessions-panel__item";
+        const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
