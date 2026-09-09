@@ -26,6 +26,7 @@ export function ensureModalDefined(window: TermWindow): void {
     private unsubscribe: (() => void) | null = null;
     private previouslyFocusedElement: HTMLElement | null = null;
     private renderedComponent: ModalName | undefined;
+    private hasRenderedShell = false;
     private readonly onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== Keybindings.ESCAPE || !this.modal.getModalConfig().isActive) return;
 
@@ -62,14 +63,7 @@ export function ensureModalDefined(window: TermWindow): void {
       const modalConfig = this.modal.getModalConfig();
 
       if (!modalConfig.isActive || !modalConfig.component) {
-        this.clearMemoizedContent();
-        this.innerHTML = `
-          <style>
-            app-modal {
-              display: none;
-            }
-          </style>
-        `;
+        this.classList.remove("is-active");
         this.restorePreviousFocus();
         return;
       }
@@ -80,7 +74,9 @@ export function ensureModalDefined(window: TermWindow): void {
 
       modalComponent.define(window);
 
-      if (this.renderedComponent !== modalConfig.component) {
+      this.classList.add("is-active");
+
+      if (!this.hasRenderedShell || this.renderedComponent !== modalConfig.component) {
         this.renderModalShell(modalConfig, modalComponent);
       }
 
@@ -93,11 +89,12 @@ export function ensureModalDefined(window: TermWindow): void {
      */
     private renderModalShell(modalConfig: ModalConfig, modalComponent: ModalComponentDefinition): void {
       this.renderedComponent = modalConfig.component;
+      this.hasRenderedShell = true;
 
       this.innerHTML = `
         <style>
           app-modal {
-            display: flex;
+            display: none;
             justify-content: center;
             align-items: center;
             position: absolute;
@@ -106,6 +103,10 @@ export function ensureModalDefined(window: TermWindow): void {
             width: 100%;
             height: 100%;
             box-sizing: border-box;
+          }
+
+          app-modal.is-active {
+            display: flex;
           }
         </style>
 
@@ -123,13 +124,6 @@ export function ensureModalDefined(window: TermWindow): void {
 
       modalElement.closeModal = this.modal.closeModal;
       modalElement.payload = modalConfig.payload;
-    }
-
-    /**
-     * Clears cached modal content when no modal is active.
-     */
-    private clearMemoizedContent(): void {
-      this.renderedComponent = undefined;
     }
 
     /**

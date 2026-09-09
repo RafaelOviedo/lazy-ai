@@ -250,7 +250,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         </style>
 
         <div>
-          <span class="details-panel__title">Details - ${this.selectedSessionValue?.title}</span>
+          <span class="details-panel__title">Details ${this.selectedSessionValue?.title ? `- ${this.selectedSessionValue.title}` : ''}</span>
         </div>
         <div class="details-panel__content">
           ${this.renderContentMarkup()}
