@@ -1,6 +1,6 @@
 import type { CodexSessionSummary, UsageLimitSnapshot } from "../repositories/sessions/codex/types.js";
 import { CodexSessionRepository } from "../repositories/sessions/codex/index.js";
-import { CodexAppServerClient, isCodexAppServerActiveWriterError } from "../repositories/app-server/codex-app-server-client.js";
+import { CodexAppServerClient } from "../repositories/app-server/codex-app-server-client.js";
 
 import { type SessionsPanelElement, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
@@ -21,6 +21,7 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
+import { createSessionResumeController } from "../shared/lib/sessions/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
@@ -119,11 +120,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let selectedProjectName = initialProjectName;
 
   let selectedSession: CodexSessionSummary | null = null;
-  let activeSessionId: string | null = null;
-  let resumingSessionId: string | null = null;
-  let resumeRequestVersion = 0;
-  let alreadyRunningTimer: ReturnType<typeof setTimeout> | null = null;
-  let resumeFailedTimer: ReturnType<typeof setTimeout> | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
 
   let loadError: string | null = null;
@@ -137,12 +133,28 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const detailsPanel = detailsPanelElement as DetailsPanelElement | null;
   const statusPanel = statusPanelElement as StatusPanelElement | null;
 
+  const sessionResumeController = createSessionResumeController({
+    client: appServerClient,
+    setActiveSessionId: (sessionId) => {
+      if (sessionsPanel) {
+        sessionsPanel.activeSessionId = sessionId;
+      }
+    },
+    setLoadError: (error) => {
+      loadError = error;
+    },
+    setSessionAlreadyRunning: (sessionId) => sessionsPanel?.setSessionAlreadyRunning(sessionId),
+    setSessionResumeFailed: (sessionId) => sessionsPanel?.setSessionResumeFailed(sessionId),
+    setSessionResuming: (sessionId) => sessionsPanel?.setSessionResuming(sessionId),
+    syncStatusPanel,
+  });
+
   if (detailsPanel) {
     detailsPanel.repository = sessionReader;
   }
 
   if (sessionsPanel) {
-    sessionsPanel.activeSessionId = activeSessionId;
+    sessionsPanel.activeSessionId = sessionResumeController.getActiveSessionId();
   }
 
   function renderPanels() {
@@ -224,100 +236,14 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const requestedSession = customEvent.detail.session;
 
     if (detailsPanel?.isConversationLoading) return;
-    if (requestedSession.id === resumingSessionId) return;
+    if (sessionResumeController.isSessionResuming(requestedSession.id)) return;
 
-    if (requestedSession.id === activeSessionId) {
-      showAlreadyRunningStatus(requestedSession.id);
+    if (sessionResumeController.isSessionActive(requestedSession.id)) {
+      sessionResumeController.showAlreadyRunningStatus(requestedSession.id);
       return;
     }
 
-    void resumeSession(requestedSession, customEvent.detail.projectPath);
-  }
-
-  async function resumeSession(requestedSession: CodexSessionSummary, resumeProjectPath: string): Promise<void> {
-    const currentResumeRequestVersion = resumeRequestVersion + 1;
-    resumeRequestVersion = currentResumeRequestVersion;
-    resumingSessionId = requestedSession.id;
-    loadError = null;
-
-    if (alreadyRunningTimer) {
-      clearTimeout(alreadyRunningTimer);
-      alreadyRunningTimer = null;
-      sessionsPanel?.setSessionAlreadyRunning(null);
-    }
-
-    if (resumeFailedTimer) {
-      clearTimeout(resumeFailedTimer);
-      resumeFailedTimer = null;
-      sessionsPanel?.setSessionResumeFailed(null);
-    }
-
-    if (sessionsPanel) {
-      sessionsPanel.setSessionResuming(resumingSessionId);
-    }
-
-    try {
-      await appServerClient.resumeThread(requestedSession.id, resumeProjectPath);
-
-      if (currentResumeRequestVersion !== resumeRequestVersion) return;
-
-      activeSessionId = requestedSession.id;
-      resumingSessionId = null;
-
-      if (sessionsPanel) {
-        sessionsPanel.setSessionResuming(null);
-        sessionsPanel.activeSessionId = activeSessionId;
-      }
-    } catch (error) {
-      if (currentResumeRequestVersion !== resumeRequestVersion) return;
-
-      const failedSessionId = requestedSession.id;
-      resumingSessionId = null;
-
-      if (sessionsPanel) {
-        sessionsPanel.setSessionResuming(null);
-      }
-
-      if (isCodexAppServerActiveWriterError(error)) {
-        showAlreadyRunningStatus(failedSessionId);
-        return;
-      }
-
-      loadError = "Failed to resume Codex session.";
-
-      if (sessionsPanel) {
-        sessionsPanel.setSessionResumeFailed(failedSessionId);
-      }
-
-      syncStatusPanel();
-
-      resumeFailedTimer = setTimeout(() => {
-        resumeFailedTimer = null;
-        sessionsPanel?.setSessionResumeFailed(null);
-      }, 1500);
-    }
-  }
-
-  function showAlreadyRunningStatus(sessionId: string): void {
-    if (alreadyRunningTimer) {
-      clearTimeout(alreadyRunningTimer);
-      alreadyRunningTimer = null;
-    }
-
-    if (resumeFailedTimer) {
-      clearTimeout(resumeFailedTimer);
-      resumeFailedTimer = null;
-      sessionsPanel?.setSessionResumeFailed(null);
-    }
-
-    if (sessionsPanel) {
-      sessionsPanel.setSessionAlreadyRunning(sessionId);
-    }
-
-    alreadyRunningTimer = setTimeout(() => {
-      alreadyRunningTimer = null;
-      sessionsPanel?.setSessionAlreadyRunning(null);
-    }, 1000);
+    void sessionResumeController.resumeSession(requestedSession, customEvent.detail.projectPath);
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -387,16 +313,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   renderPanels();
 
   return () => {
-    if (alreadyRunningTimer) {
-      clearTimeout(alreadyRunningTimer);
-      alreadyRunningTimer = null;
-    }
-
-    if (resumeFailedTimer) {
-      clearTimeout(resumeFailedTimer);
-      resumeFailedTimer = null;
-    }
-
+    sessionResumeController.dispose();
     appServerClient.dispose();
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
