@@ -1,7 +1,7 @@
 import type { CodexSessionSummary, UsageLimitSnapshot } from "../repositories/sessions/codex/types.js";
 import { CodexSessionRepository } from "../repositories/sessions/codex/index.js";
 
-import { type SessionsPanelElement, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
+import { type SessionsPanelElement, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
@@ -117,6 +117,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let selectedProjectName = initialProjectName;
 
   let selectedSession: CodexSessionSummary | null = null;
+  let activeSessionId: string | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
 
   let loadError: string | null = null;
@@ -132,6 +133,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   if (detailsPanel) {
     detailsPanel.repository = sessionReader;
+  }
+
+  if (sessionsPanel) {
+    sessionsPanel.activeSessionId = activeSessionId;
   }
 
   function renderPanels() {
@@ -208,6 +213,18 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     renderPanels();
   }
 
+  function onSessionResumeRequest(event: Event) {
+    const customEvent = event as CustomEvent<SessionResumeRequestDetail>;
+    const requestedSession = customEvent.detail.session;
+
+    activeSessionId = requestedSession.id;
+    loadError = null;
+
+    if (sessionsPanel) {
+      sessionsPanel.activeSessionId = activeSessionId;
+    }
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
 
@@ -257,6 +274,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   projectsPanel?.addEventListener("project-change", onProjectChange);
   sessionsPanel?.addEventListener("session-change", onSessionChange);
+  sessionsPanel?.addEventListener("session-resume-request", onSessionResumeRequest);
 
   if (projectsPanel) {
     projectsPanel.projectPath = projectPath;
@@ -275,6 +293,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   return () => {
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
+    sessionsPanel?.removeEventListener("session-resume-request", onSessionResumeRequest);
     document.removeEventListener("keydown", onKeyDown);
   };
 }

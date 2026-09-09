@@ -10,7 +10,13 @@ export type SessionSelectionChangeDetail = {
   error: string | null;
 };
 
+export type SessionResumeRequestDetail = {
+  session: CodexSessionSummary;
+  projectPath: string;
+};
+
 export type SessionsPanelElement = HTMLElement & {
+  activeSessionId: string | null;
   projectPath: string;
   repository: CodexSessionReader;
   readonly selectedSession: CodexSessionSummary | null;

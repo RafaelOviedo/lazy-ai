@@ -1,9 +1,10 @@
 import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { Keybindings } from "../../app/keybindings.types.js";
 
 import type { CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 
-import { SessionSelectionChangeDetail, TermWindow } from "./types.js";
+import { SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
 
 /**
  * Registers the Sessions panel custom element against a TermDOM window.
@@ -18,6 +19,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
    */
   class SessionsPanel extends window.HTMLElement {
     private projectPathValue = "";
+    private activeSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private sessions: CodexSessionSummary[] = [];
     private selectedSessionIndex = 0;
@@ -79,6 +81,30 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Updates the active session id shown as running.
+     */
+    set activeSessionId(value: string | null) {
+      if (this.activeSessionIdValue === value) return;
+
+      const shouldSelectActiveSession = value !== null;
+      this.activeSessionIdValue = value;
+
+      if (this.isConnected) {
+        this.promoteActiveSession(shouldSelectActiveSession);
+        this.render();
+        this.revealSelectedSession();
+        this.dispatchSelectionChange();
+      }
+    }
+
+    /**
+     * Returns the session id currently marked as running.
+     */
+    get activeSessionId(): string | null {
+      return this.activeSessionIdValue;
+    }
+
+    /**
      * Allows the page to replace the session reader implementation if needed.
      */
     set repository(value: CodexSessionReader) {
@@ -107,6 +133,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         this.loadError = null;
         this.sessions = await this.sessionReader.listByProject(this.projectPathValue);
         this.selectedSessionIndex = 0;
+        this.promoteActiveSession(false);
       } catch {
         this.loadError = "Failed to load Codex sessions.";
         this.sessions = [];
@@ -182,6 +209,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           .sessions-panel__meta,
           .sessions-panel__muted {
             color: #8aa4bf;
+          }
+
+          .sessions-panel__status-running {
+            color: #43B53E;
           }
 
           .sessions-panel__counter {
@@ -278,14 +309,20 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private onKeyDown(event: KeyboardEvent): void {
       const key = event.key.toLowerCase();
 
-      if (key === "j" || key === "arrowdown") {
+      if (key === Keybindings.J || key === "arrowdown") {
         this.moveSelection(1);
         event.preventDefault();
         return;
       }
 
-      if (key === "k" || key === "arrowup") {
+      if (key === Keybindings.K || key === "arrowup") {
         this.moveSelection(-1);
+        event.preventDefault();
+        return;
+      }
+
+      if (event.key === Keybindings.SPACE) {
+        this.dispatchResumeRequest();
         event.preventDefault();
       }
     }
@@ -322,6 +359,53 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Emits the selected session as the requested running session.
+     */
+    private dispatchResumeRequest(): void {
+      const selectedSession = this.selectedSession;
+
+      if (!selectedSession) return;
+
+      const detail: SessionResumeRequestDetail = {
+        session: selectedSession,
+        projectPath: this.projectPathValue,
+      };
+
+      this.dispatchEvent(new window.CustomEvent<SessionResumeRequestDetail>("session-resume-request", {
+        bubbles: true,
+        detail,
+      }));
+    }
+
+    /**
+     * Moves the active session to the top while preserving selected session identity.
+     */
+    private promoteActiveSession(selectActiveSession: boolean): void {
+      if (!this.activeSessionIdValue || this.sessions.length === 0) return;
+
+      const activeSessionIndex = this.sessions.findIndex((session) => session.id === this.activeSessionIdValue);
+
+      if (activeSessionIndex === -1) return;
+
+      const selectedSessionId = this.selectedSession?.id;
+      const activeSession = this.sessions[activeSessionIndex];
+
+      if (activeSessionIndex > 0) {
+        this.sessions.splice(activeSessionIndex, 1);
+        this.sessions.unshift(activeSession);
+      }
+
+      if (selectActiveSession) {
+        this.selectedSessionIndex = 0;
+        return;
+      }
+
+      this.selectedSessionIndex = selectedSessionId
+        ? Math.max(0, this.sessions.findIndex((session) => session.id === selectedSessionId))
+        : 0;
+    }
+
+    /**
      * Builds the markup for loading, empty, error, and populated session states.
      */
     private renderContentMarkup(): string {
@@ -347,11 +431,22 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
         return `
           <div class="${selectedClass}" data-session-index="${index}"${selectedAttribute}>
-            <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · ${escapeHtml(session.status)}</span></div>
+            <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · ${this.renderSessionStatusMarkup(session)}</span></div>
           </div>
         `;
       })
         .join("");
+    }
+
+    /**
+     * Builds the saved/running status label.
+     */
+    private renderSessionStatusMarkup(session: CodexSessionSummary): string {
+      if (session.id === this.activeSessionIdValue) {
+        return `<span class="sessions-panel__status-running">Running</span>`;
+      }
+
+      return escapeHtml(session.status);
     }
 
     /**

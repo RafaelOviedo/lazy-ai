@@ -6,6 +6,7 @@ export enum Keybindings {
   N = "n",
   D = "d",
   Q = "q",
+  SPACE = " ",
   ESCAPE = "Escape",
   QUESTION_MARK = "?",
 }
