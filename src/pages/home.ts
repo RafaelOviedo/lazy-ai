@@ -118,6 +118,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   let selectedSession: CodexSessionSummary | null = null;
   let activeSessionId: string | null = null;
+  let resumingSessionId: string | null = null;
+  let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+  let alreadyRunningTimer: ReturnType<typeof setTimeout> | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
 
   let loadError: string | null = null;
@@ -217,12 +220,48 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const customEvent = event as CustomEvent<SessionResumeRequestDetail>;
     const requestedSession = customEvent.detail.session;
 
-    activeSessionId = requestedSession.id;
+    if (detailsPanel?.isConversationLoading) return;
+
+    if (requestedSession.id === activeSessionId) {
+      if (alreadyRunningTimer) {
+        clearTimeout(alreadyRunningTimer);
+        alreadyRunningTimer = null;
+      }
+
+      if (sessionsPanel) {
+        sessionsPanel.setSessionAlreadyRunning(requestedSession.id);
+      }
+
+      alreadyRunningTimer = setTimeout(() => {
+        alreadyRunningTimer = null;
+        sessionsPanel?.setSessionAlreadyRunning(null);
+      }, 1000);
+
+      return;
+    }
+
+    resumingSessionId = requestedSession.id;
     loadError = null;
 
-    if (sessionsPanel) {
-      sessionsPanel.activeSessionId = activeSessionId;
+    if (resumeTimer) {
+      clearTimeout(resumeTimer);
+      resumeTimer = null;
     }
+
+    if (sessionsPanel) {
+      sessionsPanel.setSessionResuming(resumingSessionId);
+    }
+
+    resumeTimer = setTimeout(() => {
+      activeSessionId = requestedSession.id;
+      resumingSessionId = null;
+      resumeTimer = null;
+
+      if (sessionsPanel) {
+        sessionsPanel.setSessionResuming(null);
+        sessionsPanel.activeSessionId = activeSessionId;
+      }
+    }, 150);
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -291,6 +330,16 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   renderPanels();
 
   return () => {
+    if (alreadyRunningTimer) {
+      clearTimeout(alreadyRunningTimer);
+      alreadyRunningTimer = null;
+    }
+
+    if (resumeTimer) {
+      clearTimeout(resumeTimer);
+      resumeTimer = null;
+    }
+
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
     sessionsPanel?.removeEventListener("session-resume-request", onSessionResumeRequest);

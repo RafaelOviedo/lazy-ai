@@ -99,6 +99,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Indicates whether a conversation load is pending or in progress.
+     */
+    get isConversationLoading(): boolean {
+      return this.isLoading || this.loadTimer !== null;
+    }
+
+    /**
      * Re-renders the light DOM for the panel.
      */
     private render(): void {

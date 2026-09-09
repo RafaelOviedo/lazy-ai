@@ -20,6 +20,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
   class SessionsPanel extends window.HTMLElement {
     private projectPathValue = "";
     private activeSessionIdValue: string | null = null;
+    private resumingSessionIdValue: string | null = null;
+    private alreadyRunningSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private sessions: CodexSessionSummary[] = [];
     private selectedSessionIndex = 0;
@@ -102,6 +104,38 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      */
     get activeSessionId(): string | null {
       return this.activeSessionIdValue;
+    }
+
+    /**
+     * Updates the session id currently shown as resuming.
+     */
+    setSessionResuming(sessionId: string | null): void {
+      if (this.resumingSessionIdValue === sessionId) return;
+
+      const previousResumingSessionId = this.resumingSessionIdValue;
+
+      this.resumingSessionIdValue = sessionId;
+
+      if (!this.isConnected) return;
+
+      this.updateSessionStatusMarkup(previousResumingSessionId);
+      this.updateSessionStatusMarkup(sessionId);
+    }
+
+    /**
+     * Updates the session id currently shown as already running.
+     */
+    setSessionAlreadyRunning(sessionId: string | null): void {
+      if (this.alreadyRunningSessionIdValue === sessionId) return;
+
+      const previousAlreadyRunningSessionId = this.alreadyRunningSessionIdValue;
+
+      this.alreadyRunningSessionIdValue = sessionId;
+
+      if (!this.isConnected) return;
+
+      this.updateSessionStatusMarkup(previousAlreadyRunningSessionId);
+      this.updateSessionStatusMarkup(sessionId);
     }
 
     /**
@@ -215,6 +249,14 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             color: #43B53E;
           }
 
+          .sessions-panel__status-resuming {
+            color: #d7ba7d;
+          }
+
+          .sessions-panel__status-already-running {
+            color: #B81D1D;
+          }
+
           .sessions-panel__counter {
             display: flex;
             justify-content: flex-end;
@@ -292,6 +334,21 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (marker) {
         marker.textContent = isSelected ? "◉" : "○";
       }
+    }
+
+    /**
+     * Updates only one rendered status label.
+     */
+    private updateSessionStatusMarkup(sessionId: string | null): void {
+      if (!sessionId) return;
+
+      const index = this.sessions.findIndex((session) => session.id === sessionId);
+      const item = index === -1 ? null : this.getSessionItemElement(index);
+      const status = item?.querySelector<HTMLElement>("[data-session-status='true']");
+
+      if (!status || index === -1) return;
+
+      status.innerHTML = this.renderSessionStatusMarkup(this.sessions[index]);
     }
 
     /**
@@ -431,7 +488,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
         return `
           <div class="${selectedClass}" data-session-index="${index}"${selectedAttribute}>
-            <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · ${this.renderSessionStatusMarkup(session)}</span></div>
+            <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · <span data-session-status="true">${this.renderSessionStatusMarkup(session)}</span></span></div>
           </div>
         `;
       })
@@ -442,6 +499,14 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Builds the saved/running status label.
      */
     private renderSessionStatusMarkup(session: CodexSessionSummary): string {
+      if (session.id === this.alreadyRunningSessionIdValue) {
+        return `<span class="sessions-panel__status-already-running">Already running</span>`;
+      }
+
+      if (session.id === this.resumingSessionIdValue) {
+        return `<span class="sessions-panel__status-resuming">Resuming...</span>`;
+      }
+
       if (session.id === this.activeSessionIdValue) {
         return `<span class="sessions-panel__status-running">Running</span>`;
       }

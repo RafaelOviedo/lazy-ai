@@ -5,6 +5,7 @@ import type { CodexSessionReader, CodexSessionSummary } from "../../repositories
 export type TermWindow = TermDOM["window"];
 
 export type DetailsPanelElement = HTMLElement & {
+  readonly isConversationLoading: boolean;
   repository: CodexSessionReader;
   selectedSession: CodexSessionSummary | null;
 };
