@@ -19,6 +19,7 @@ export type SessionsPanelElement = HTMLElement & {
   activeSessionId: string | null;
   projectPath: string;
   setSessionAlreadyRunning(sessionId: string | null): void;
+  setSessionResumeFailed(sessionId: string | null): void;
   setSessionResuming(sessionId: string | null): void;
   repository: CodexSessionReader;
   readonly selectedSession: CodexSessionSummary | null;

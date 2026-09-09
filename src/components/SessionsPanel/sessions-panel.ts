@@ -22,6 +22,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private activeSessionIdValue: string | null = null;
     private resumingSessionIdValue: string | null = null;
     private alreadyRunningSessionIdValue: string | null = null;
+    private resumeFailedSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private sessions: CodexSessionSummary[] = [];
     private selectedSessionIndex = 0;
@@ -135,6 +136,22 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (!this.isConnected) return;
 
       this.updateSessionStatusMarkup(previousAlreadyRunningSessionId);
+      this.updateSessionStatusMarkup(sessionId);
+    }
+
+    /**
+     * Updates the session id currently shown as failed to resume.
+     */
+    setSessionResumeFailed(sessionId: string | null): void {
+      if (this.resumeFailedSessionIdValue === sessionId) return;
+
+      const previousResumeFailedSessionId = this.resumeFailedSessionIdValue;
+
+      this.resumeFailedSessionIdValue = sessionId;
+
+      if (!this.isConnected) return;
+
+      this.updateSessionStatusMarkup(previousResumeFailedSessionId);
       this.updateSessionStatusMarkup(sessionId);
     }
 
@@ -254,6 +271,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           }
 
           .sessions-panel__status-already-running {
+            color: #B81D1D;
+          }
+
+          .sessions-panel__status-failed {
             color: #B81D1D;
           }
 
@@ -499,6 +520,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Builds the saved/running status label.
      */
     private renderSessionStatusMarkup(session: CodexSessionSummary): string {
+      if (session.id === this.resumeFailedSessionIdValue) {
+        return `<span class="sessions-panel__status-failed">Resume failed</span>`;
+      }
+
       if (session.id === this.alreadyRunningSessionIdValue) {
         return `<span class="sessions-panel__status-already-running">Already running</span>`;
       }

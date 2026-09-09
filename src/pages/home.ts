@@ -1,5 +1,6 @@
 import type { CodexSessionSummary, UsageLimitSnapshot } from "../repositories/sessions/codex/types.js";
 import { CodexSessionRepository } from "../repositories/sessions/codex/index.js";
+import { CodexAppServerClient, isCodexAppServerActiveWriterError } from "../repositories/app-server/codex-app-server-client.js";
 
 import { type SessionsPanelElement, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
@@ -32,6 +33,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const { getModalConfig, openModal } = useModal();
   const sessionReader = new CodexSessionRepository();
+  const appServerClient = new CodexAppServerClient();
 
   document.body.innerHTML = `
     <div class="card">
@@ -119,8 +121,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let selectedSession: CodexSessionSummary | null = null;
   let activeSessionId: string | null = null;
   let resumingSessionId: string | null = null;
-  let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+  let resumeRequestVersion = 0;
   let alreadyRunningTimer: ReturnType<typeof setTimeout> | null = null;
+  let resumeFailedTimer: ReturnType<typeof setTimeout> | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
 
   let loadError: string | null = null;
@@ -221,47 +224,100 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const requestedSession = customEvent.detail.session;
 
     if (detailsPanel?.isConversationLoading) return;
+    if (requestedSession.id === resumingSessionId) return;
 
     if (requestedSession.id === activeSessionId) {
-      if (alreadyRunningTimer) {
-        clearTimeout(alreadyRunningTimer);
-        alreadyRunningTimer = null;
-      }
-
-      if (sessionsPanel) {
-        sessionsPanel.setSessionAlreadyRunning(requestedSession.id);
-      }
-
-      alreadyRunningTimer = setTimeout(() => {
-        alreadyRunningTimer = null;
-        sessionsPanel?.setSessionAlreadyRunning(null);
-      }, 1000);
-
+      showAlreadyRunningStatus(requestedSession.id);
       return;
     }
 
+    void resumeSession(requestedSession, customEvent.detail.projectPath);
+  }
+
+  async function resumeSession(requestedSession: CodexSessionSummary, resumeProjectPath: string): Promise<void> {
+    const currentResumeRequestVersion = resumeRequestVersion + 1;
+    resumeRequestVersion = currentResumeRequestVersion;
     resumingSessionId = requestedSession.id;
     loadError = null;
 
-    if (resumeTimer) {
-      clearTimeout(resumeTimer);
-      resumeTimer = null;
+    if (alreadyRunningTimer) {
+      clearTimeout(alreadyRunningTimer);
+      alreadyRunningTimer = null;
+      sessionsPanel?.setSessionAlreadyRunning(null);
+    }
+
+    if (resumeFailedTimer) {
+      clearTimeout(resumeFailedTimer);
+      resumeFailedTimer = null;
+      sessionsPanel?.setSessionResumeFailed(null);
     }
 
     if (sessionsPanel) {
       sessionsPanel.setSessionResuming(resumingSessionId);
     }
 
-    resumeTimer = setTimeout(() => {
+    try {
+      await appServerClient.resumeThread(requestedSession.id, resumeProjectPath);
+
+      if (currentResumeRequestVersion !== resumeRequestVersion) return;
+
       activeSessionId = requestedSession.id;
       resumingSessionId = null;
-      resumeTimer = null;
 
       if (sessionsPanel) {
         sessionsPanel.setSessionResuming(null);
         sessionsPanel.activeSessionId = activeSessionId;
       }
-    }, 150);
+    } catch (error) {
+      if (currentResumeRequestVersion !== resumeRequestVersion) return;
+
+      const failedSessionId = requestedSession.id;
+      resumingSessionId = null;
+
+      if (sessionsPanel) {
+        sessionsPanel.setSessionResuming(null);
+      }
+
+      if (isCodexAppServerActiveWriterError(error)) {
+        showAlreadyRunningStatus(failedSessionId);
+        return;
+      }
+
+      loadError = "Failed to resume Codex session.";
+
+      if (sessionsPanel) {
+        sessionsPanel.setSessionResumeFailed(failedSessionId);
+      }
+
+      syncStatusPanel();
+
+      resumeFailedTimer = setTimeout(() => {
+        resumeFailedTimer = null;
+        sessionsPanel?.setSessionResumeFailed(null);
+      }, 1500);
+    }
+  }
+
+  function showAlreadyRunningStatus(sessionId: string): void {
+    if (alreadyRunningTimer) {
+      clearTimeout(alreadyRunningTimer);
+      alreadyRunningTimer = null;
+    }
+
+    if (resumeFailedTimer) {
+      clearTimeout(resumeFailedTimer);
+      resumeFailedTimer = null;
+      sessionsPanel?.setSessionResumeFailed(null);
+    }
+
+    if (sessionsPanel) {
+      sessionsPanel.setSessionAlreadyRunning(sessionId);
+    }
+
+    alreadyRunningTimer = setTimeout(() => {
+      alreadyRunningTimer = null;
+      sessionsPanel?.setSessionAlreadyRunning(null);
+    }, 1000);
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -285,6 +341,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!isPlainKeyEvent(event) || key !== Keybindings.Q) return false;
 
     event.preventDefault();
+    appServerClient.dispose();
     window.close();
     return true;
   }
@@ -335,11 +392,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       alreadyRunningTimer = null;
     }
 
-    if (resumeTimer) {
-      clearTimeout(resumeTimer);
-      resumeTimer = null;
+    if (resumeFailedTimer) {
+      clearTimeout(resumeFailedTimer);
+      resumeFailedTimer = null;
     }
 
+    appServerClient.dispose();
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
     sessionsPanel?.removeEventListener("session-resume-request", onSessionResumeRequest);
