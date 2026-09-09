@@ -206,12 +206,61 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private moveSelection(direction: 1 | -1): void {
       if (this.sessions.length === 0) return;
 
+      const previousSessionIndex = this.selectedSessionIndex;
       this.selectedSessionIndex =
         (this.selectedSessionIndex + direction + this.sessions.length) % this.sessions.length;
 
-      this.render();
+      this.updateSelectedSessionMarkup(previousSessionIndex, this.selectedSessionIndex);
       this.revealSelectedSession();
       this.dispatchSelectionChange();
+    }
+
+    /**
+     * Updates only the affected session rows instead of rebuilding the panel.
+     */
+    private updateSelectedSessionMarkup(previousSessionIndex: number, nextSessionIndex: number): void {
+      const previousItem = this.getSessionItemElement(previousSessionIndex);
+      const nextItem = this.getSessionItemElement(nextSessionIndex);
+
+      if (!previousItem || !nextItem) {
+        this.render();
+        return;
+      }
+
+      this.setSessionItemSelected(previousItem, false);
+      this.setSessionItemSelected(nextItem, true);
+
+      const counter = this.querySelector<HTMLElement>(".sessions-panel__counter");
+
+      if (counter) {
+        counter.textContent = this.renderSessionCountMarkup();
+      }
+    }
+
+    /**
+     * Finds one rendered session row by index.
+     */
+    private getSessionItemElement(index: number): HTMLElement | null {
+      return this.querySelector<HTMLElement>(`[data-session-index="${index}"]`);
+    }
+
+    /**
+     * Applies selected state to one session row.
+     */
+    private setSessionItemSelected(item: HTMLElement, isSelected: boolean): void {
+      const marker = item.querySelector<HTMLElement>("[data-selection-marker='true']");
+
+      item.classList.toggle("is-selected", isSelected);
+
+      if (isSelected) {
+        item.setAttribute("data-selected", "true");
+      } else {
+        item.removeAttribute("data-selected");
+      }
+
+      if (marker) {
+        marker.textContent = isSelected ? "◉" : "○";
+      }
     }
 
     /**
@@ -297,8 +346,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
 
         return `
-          <div class="${selectedClass}"${selectedAttribute}>
-            <div><span>${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · ${escapeHtml(session.status)}</span></div>
+          <div class="${selectedClass}" data-session-index="${index}"${selectedAttribute}>
+            <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · ${escapeHtml(session.status)}</span></div>
           </div>
         `;
       })

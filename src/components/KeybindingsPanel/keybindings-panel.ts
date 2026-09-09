@@ -27,13 +27,16 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
         <style>
           keybindings-panel {
             display: flex;
-            justify-content: flex-start;
+            flex-direction: row;
+            justify-content: space-between;
             align-items: center;
             width: 97.5%;
             height: 5%;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
+            padding-left: 1px;
+            padding-right: 1px;
           }
 
           .keybindings-panel__key {
@@ -41,17 +44,20 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
           }
         </style>
 
-        <legend>Keybindings:</legend>
-        <div>
-          <span class="keybindings-panel__key">Previous panel: h ↑</span> <span>|</span>
-          <span class="keybindings-panel__key">Next panel: l ↓</span> <span>|</span>
-          <span class="keybindings-panel__key">Previous item: k ↑</span> <span>|</span>
-          <span class="keybindings-panel__key">Next item: j ↓</span> <span>|</span>
-          <span class="keybindings-panel__key">New session: n</span> <span>|</span>
-          <span class="keybindings-panel__key">Delete session: d</span> <span>|</span>
-          <span class="keybindings-panel__key">Quit: q</span> <span>|</span>
-          <span class="keybindings-panel__key">Help: ?</span>
+        <div style="display: flex; gap: 1px;">
+          <span>Keybindings:</span>
+          <div>
+            <span class="keybindings-panel__key">Previous panel: h ↑</span> <span>|</span>
+            <span class="keybindings-panel__key">Next panel: l ↓</span> <span>|</span>
+            <span class="keybindings-panel__key">Previous item: k ↑</span> <span>|</span>
+            <span class="keybindings-panel__key">Next item: j ↓</span> <span>|</span>
+            <span class="keybindings-panel__key">New session: n</span> <span>|</span>
+            <span class="keybindings-panel__key">Delete session: d</span> <span>|</span>
+            <span class="keybindings-panel__key">Quit: q</span> <span>|</span>
+            <span class="keybindings-panel__key">Help: ?</span>
+          </div>
         </div>
+        <span>v1.0.0</span>
       `;
     }
   }

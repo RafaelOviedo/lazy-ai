@@ -13,6 +13,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     return;
   }
 
+  const conversationLoadDelayMs = 300;
+
   /**
    * Renders selected-session detail content.
    */
@@ -23,6 +25,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private isLoading = false;
     private loadError: string | null = null;
     private loadVersion = 0;
+    private loadTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
       super();
@@ -41,7 +44,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.addEventListener("keydown", this.onKeyDown);
 
       if (this.selectedSessionValue) {
-        void this.loadConversation();
+        this.scheduleConversationLoad();
       }
     }
 
@@ -49,6 +52,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
+      if (this.loadTimer) {
+        clearTimeout(this.loadTimer);
+        this.loadTimer = null;
+      }
+
       this.removeEventListener("keydown", this.onKeyDown);
     }
 
@@ -59,7 +67,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.sessionReader = value;
 
       if (this.isConnected && this.selectedSessionValue) {
-        void this.loadConversation();
+        this.scheduleConversationLoad();
       }
     }
 
@@ -79,7 +87,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.selectedSessionValue = value;
 
       if (this.isConnected) {
-        void this.loadConversation();
+        this.scheduleConversationLoad();
       }
     }
 
@@ -242,7 +250,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         </style>
 
         <div>
-          <span class="details-panel__title">Details</span>
+          <span class="details-panel__title">Details - ${this.selectedSessionValue?.title}</span>
         </div>
         <div class="details-panel__content">
           ${this.renderContentMarkup()}
@@ -290,11 +298,16 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Loads the selected session transcript.
+     * Shows the loading state immediately and defers heavier transcript loading.
      */
-    private async loadConversation(): Promise<void> {
+    private scheduleConversationLoad(): void {
       const selectedSession = this.selectedSessionValue;
       const loadVersion = ++this.loadVersion;
+
+      if (this.loadTimer) {
+        clearTimeout(this.loadTimer);
+        this.loadTimer = null;
+      }
 
       this.messages = [];
       this.loadError = null;
@@ -307,6 +320,18 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       this.isLoading = true;
       this.render();
+
+      this.loadTimer = setTimeout(() => {
+        this.loadTimer = null;
+        void this.loadConversation(selectedSession, loadVersion);
+      }, conversationLoadDelayMs);
+    }
+
+    /**
+     * Loads the selected session transcript.
+     */
+    private async loadConversation(selectedSession: CodexSessionSummary, loadVersion: number): Promise<void> {
+      if (loadVersion !== this.loadVersion) return;
 
       try {
         const conversation = await this.sessionReader.getConversation(selectedSession.id);

@@ -35,7 +35,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   document.body.innerHTML = `
     <div class="card">
-      <legend>v0.0.1</legend>
       <div class="container-for-1-and-2">
         <div class="container-1">
           <sessions-panel class="container-1-1" id="panel-1" tabindex="0"></sessions-panel>
