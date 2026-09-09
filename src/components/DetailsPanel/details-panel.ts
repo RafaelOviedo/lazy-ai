@@ -97,7 +97,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.innerHTML = `
         <style>
           details-panel {
-            display: block;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             width: 67%;
             height: 82%;
             border: 1px solid #5fafff;
@@ -116,6 +119,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
 
           .details-panel__title {
+            width: 65%;
+            height: 3%;
             display: flex;
             justify-content: flex-start;
             align-items: center;
@@ -123,8 +128,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
 
           .details-panel__content {
-            height: 92%;
+            width: 66%;
+            height: 75%;
             overflow: scroll;
+            border-top: 1px solid #5fafff;
           }
 
           .details-panel__session-title {
@@ -136,7 +143,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
 
           .details-panel__message {
-            border-top: 1px solid #ccc;
+            border-top: 1px solid #595959;
             padding: 1px;
             margin: 0;
           }
@@ -249,15 +256,14 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private renderContentMarkup(): string {
       if (!this.selectedSessionValue) {
         return `
-          <div>No session selected yet.</div>
-          <div class="details-panel__muted" style="margin-top: 0.5rem;">Select a saved session to inspect its conversation.</div>
+          <div style="padding-left: 1ch;">No session selected yet.</div>
+          <div class="details-panel__muted" style="margin-top: 0.5rem; padding-left: 1ch;">Select a saved session to inspect its conversation.</div>
         `;
       }
 
       if (this.isLoading) {
         return `
-          <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
-          <div class="details-panel__muted" style="margin-top: 0.5rem;">Loading conversation...</div>
+          <div class="details-panel__muted" style="width: 65%; margin-top: 0.5rem; padding-left: 1ch;">Loading conversation...</div>
         `;
       }
 
