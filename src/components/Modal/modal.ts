@@ -10,6 +10,8 @@ const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
   [ModalName.helpInfoModal]: { tagName: "help-info-modal", define: ensureHelpInfoModalDefined },
 };
 
+const defaultPreloadedModal = ModalName.helpInfoModal;
+
 /**
  * Registers the app modal root custom element against a TermDOM window.
  */
@@ -42,6 +44,7 @@ export function ensureModalDefined(window: TermWindow): void {
         this.tabIndex = 0;
       }
 
+      this.preloadModalShell(defaultPreloadedModal);
       this.unsubscribe = this.modal.subscribe(() => this.render());
       this.ownerDocument.addEventListener("keydown", this.onKeyDown);
       this.render();
@@ -82,6 +85,18 @@ export function ensureModalDefined(window: TermWindow): void {
 
       this.syncModalElement(modalConfig, modalComponent);
       this.focus();
+    }
+
+    /**
+     * Builds the default modal once so the first open only toggles visibility.
+     */
+    private preloadModalShell(component: ModalName): void {
+      if (this.hasRenderedShell && this.renderedComponent === component) return;
+
+      const modalComponent = modalComponentMap[component];
+
+      modalComponent.define(window);
+      this.renderModalShell({ isActive: false, component }, modalComponent);
     }
 
     /**
