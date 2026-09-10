@@ -16,7 +16,6 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
    * Renders the current project/session status.
    */
   class StatusPanel extends window.HTMLElement {
-    private activityStatusValue: string | null = null;
     private loadErrorValue: string | null = null;
     private projectLoadErrorValue: string | null = null;
     private selectedSessionValue: CodexSessionSummary | null = null;
@@ -27,26 +26,6 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
      */
     connectedCallback(): void {
       this.render();
-    }
-
-    /**
-     * Updates transient activity status.
-     */
-    set activityStatus(value: string | null) {
-      if (this.activityStatusValue === value) return;
-
-      this.activityStatusValue = value;
-
-      if (this.isConnected) {
-        this.render();
-      }
-    }
-
-    /**
-     * Returns transient activity status.
-     */
-    get activityStatus(): string | null {
-      return this.activityStatusValue;
     }
 
     /**
@@ -167,10 +146,6 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
           .status-panel__muted {
             color: #8aa4bf;
           }
-
-          .status-panel__activity {
-            color: #d7ba7d;
-          }
         </style>
 
         <legend class="status-panel__title">Global status</legend>
@@ -188,10 +163,6 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
 
       if (this.loadErrorValue) {
         return `${escapeHtml(this.loadErrorValue)}${this.renderUsageLimitSuffix()}`;
-      }
-
-      if (this.activityStatusValue) {
-        return `<span class="status-panel__activity">${escapeHtml(this.activityStatusValue)}</span>${this.renderUsageLimitSuffix()}`;
       }
 
       if (!this.selectedSessionValue) {

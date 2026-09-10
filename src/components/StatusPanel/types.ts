@@ -5,7 +5,6 @@ import type { CodexSessionSummary, UsageLimitSnapshot } from "../../repositories
 export type TermWindow = TermDOM["window"];
 
 export type StatusPanelElement = HTMLElement & {
-  activityStatus: string | null;
   loadError: string | null;
   projectLoadError: string | null;
   selectedSession: CodexSessionSummary | null;
