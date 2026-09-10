@@ -17,6 +17,7 @@ type SessionResumeControllerOptions = {
 };
 
 export type SessionResumeController = {
+  clearActiveSession(sessionId?: string): void;
   dispose(): void;
   getActiveSessionId(): string | null;
   isSessionActive(sessionId: string): boolean;
@@ -107,6 +108,12 @@ export function createSessionResumeController(options: SessionResumeControllerOp
   }
 
   return {
+    clearActiveSession(sessionId?: string): void {
+      if (sessionId && activeSessionId !== sessionId) return;
+
+      activeSessionId = null;
+      options.setActiveSessionId(null);
+    },
     dispose(): void {
       resumeRequestVersion += 1;
       resumingSessionId = null;

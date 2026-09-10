@@ -8,6 +8,8 @@ export type ModalComponentDefinition = {
 };
 
 export type ModalElement<TPayload = unknown> = HTMLElement & {
+  cancelModal?: () => void;
   closeModal: () => void;
+  confirmModal?: () => void;
   payload: TPayload | undefined;
 };

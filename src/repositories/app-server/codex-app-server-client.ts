@@ -32,6 +32,10 @@ export type CodexAppServerResumeResult = {
   threadId: string;
 };
 
+export type CodexAppServerDeleteResult = {
+  threadId: string;
+};
+
 export class CodexAppServerActiveWriterError extends Error {
   constructor(message: string) {
     super(message);
@@ -69,6 +73,18 @@ export class CodexAppServerClient {
 
     return {
       threadId: result.thread?.sessionId ?? result.thread?.id ?? threadId,
+    };
+  }
+
+  async deleteThread(threadId: string): Promise<CodexAppServerDeleteResult> {
+    await this.initialize();
+
+    await this.request<Record<string, never>>("thread/delete", {
+      threadId,
+    });
+
+    return {
+      threadId,
     };
   }
 

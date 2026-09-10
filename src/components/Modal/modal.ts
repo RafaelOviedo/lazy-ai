@@ -1,12 +1,14 @@
 import { useModal } from "../../composables/useModal.js";
 import { ModalName } from "../../shared/lib/modal/index.js";
 import { Keybindings } from "../../app/keybindings.types.js";
+import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureHelpInfoModalDefined } from "./modules/HelpInfoModal/help-info-modal.js";
 
 import type { ModalConfig } from "../../shared/lib/modal/index.js";
 import type { ModalComponentDefinition, ModalElement, TermWindow } from "./types.js";
 
 const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
+  [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
   [ModalName.helpInfoModal]: { tagName: "help-info-modal", define: ensureHelpInfoModalDefined },
 };
 
@@ -30,10 +32,22 @@ export function ensureModalDefined(window: TermWindow): void {
     private renderedComponent: ModalName | undefined;
     private hasRenderedShell = false;
     private readonly onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== Keybindings.ESCAPE || !this.modal.getModalConfig().isActive) return;
+      const modalConfig = this.modal.getModalConfig();
+
+      if (!modalConfig.isActive) return;
+
+      if (event.key === Keybindings.ENTER && this.confirmActiveModal(modalConfig)) {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.key !== Keybindings.ESCAPE) return;
 
       event.preventDefault();
-      this.modal.closeModal();
+
+      if (!this.cancelActiveModal(modalConfig)) {
+        this.modal.closeModal();
+      }
     };
 
     /**
@@ -137,8 +151,43 @@ export function ensureModalDefined(window: TermWindow): void {
 
       if (!modalElement) return;
 
-      modalElement.closeModal = this.modal.closeModal;
+      modalElement.closeModal = this.modal.closeModal.bind(this.modal);
       modalElement.payload = modalConfig.payload;
+    }
+
+    /**
+     * Invokes the active modal confirmation action when it exposes one.
+     */
+    private confirmActiveModal(modalConfig: ModalConfig): boolean {
+      const modalElement = this.getActiveModalElement(modalConfig);
+
+      if (!modalElement?.confirmModal) return false;
+
+      modalElement.confirmModal();
+      return true;
+    }
+
+    /**
+     * Invokes the active modal cancellation action when it exposes one.
+     */
+    private cancelActiveModal(modalConfig: ModalConfig): boolean {
+      const modalElement = this.getActiveModalElement(modalConfig);
+
+      if (!modalElement?.cancelModal) return false;
+
+      modalElement.cancelModal();
+      return true;
+    }
+
+    /**
+     * Returns the element for the current modal component.
+     */
+    private getActiveModalElement(modalConfig: ModalConfig): ModalElement | null {
+      if (!modalConfig.component) return null;
+
+      const modalComponent = modalComponentMap[modalConfig.component];
+
+      return this.querySelector<ModalElement>(modalComponent.tagName);
     }
 
     /**

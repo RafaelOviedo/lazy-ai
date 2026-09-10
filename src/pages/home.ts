@@ -2,7 +2,7 @@ import type { CodexSessionSummary, UsageLimitSnapshot } from "../repositories/se
 import { CodexSessionRepository } from "../repositories/sessions/codex/index.js";
 import { CodexAppServerClient } from "../repositories/app-server/codex-app-server-client.js";
 
-import { type SessionsPanelElement, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
+import { type SessionsPanelElement, type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
@@ -21,7 +21,7 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
-import { createSessionResumeController } from "../shared/lib/sessions/index.js";
+import { createSessionDeleteController, createSessionResumeController } from "../shared/lib/sessions/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
@@ -32,7 +32,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureKeybindingsPanelDefined(window);
   ensureModalDefined(window);
 
-  const { getModalConfig, openModal } = useModal();
+  const { closeModal, getModalConfig, openModal } = useModal();
   const sessionReader = new CodexSessionRepository();
   const appServerClient = new CodexAppServerClient();
 
@@ -149,6 +149,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     syncStatusPanel,
   });
 
+  const sessionDeleteController = createSessionDeleteController({
+    clearActiveSession: (sessionId) => sessionResumeController.clearActiveSession(sessionId),
+    client: appServerClient,
+    reloadSessions: () => sessionsPanel?.reload() ?? Promise.resolve(),
+    setLoadError: (error) => {
+      loadError = error;
+    },
+    setSessionDeleting: (sessionId) => sessionsPanel?.setSessionDeleting(sessionId),
+    syncStatusPanel,
+  });
+
   if (detailsPanel) {
     detailsPanel.repository = sessionReader;
   }
@@ -246,10 +257,26 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     void sessionResumeController.resumeSession(requestedSession, customEvent.detail.projectPath);
   }
 
+  function onSessionDeleteRequest(event: Event) {
+    const customEvent = event as CustomEvent<SessionDeleteRequestDetail>;
+    const requestedSession = customEvent.detail.session;
+
+    if (sessionDeleteController.isSessionDeleting(requestedSession.id)) return;
+
+    openModal(ModalName.confirmDeleteSessionModal, {
+      onConfirm: () => {
+        closeModal();
+        void sessionDeleteController.deleteSession(requestedSession);
+      },
+      sessionId: requestedSession.id,
+      sessionTitle: requestedSession.title,
+    });
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
 
-    if (getModalConfig().isActive && getModalConfig().component === ModalName.helpInfoModal) return;
+    if (getModalConfig().isActive) return;
     if (handleModalShortcuts(event, key)) return;
     if (handleQuitShortcut(event, key)) return;
     if (handlePanelNavigation(event, key)) return;
@@ -295,6 +322,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   document.addEventListener("keydown", onKeyDown);
 
   projectsPanel?.addEventListener("project-change", onProjectChange);
+  sessionsPanel?.addEventListener("session-delete-request", onSessionDeleteRequest);
   sessionsPanel?.addEventListener("session-change", onSessionChange);
   sessionsPanel?.addEventListener("session-resume-request", onSessionResumeRequest);
 
@@ -313,9 +341,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   renderPanels();
 
   return () => {
+    sessionDeleteController.dispose();
     sessionResumeController.dispose();
     appServerClient.dispose();
     projectsPanel?.removeEventListener("project-change", onProjectChange);
+    sessionsPanel?.removeEventListener("session-delete-request", onSessionDeleteRequest);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
     sessionsPanel?.removeEventListener("session-resume-request", onSessionResumeRequest);
     document.removeEventListener("keydown", onKeyDown);

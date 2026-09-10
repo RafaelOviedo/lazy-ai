@@ -4,7 +4,7 @@ import { Keybindings } from "../../app/keybindings.types.js";
 
 import type { CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
 
-import { SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
+import { SessionDeleteRequestDetail, SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
 
 /**
  * Registers the Sessions panel custom element against a TermDOM window.
@@ -21,6 +21,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private projectPathValue = "";
     private activeSessionIdValue: string | null = null;
     private resumingSessionIdValue: string | null = null;
+    private deletingSessionIdValue: string | null = null;
     private alreadyRunningSessionIdValue: string | null = null;
     private resumeFailedSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
@@ -120,6 +121,22 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (!this.isConnected) return;
 
       this.updateSessionStatusMarkup(previousResumingSessionId);
+      this.updateSessionStatusMarkup(sessionId);
+    }
+
+    /**
+     * Updates the session id currently shown as deleting.
+     */
+    setSessionDeleting(sessionId: string | null): void {
+      if (this.deletingSessionIdValue === sessionId) return;
+
+      const previousDeletingSessionId = this.deletingSessionIdValue;
+
+      this.deletingSessionIdValue = sessionId;
+
+      if (!this.isConnected) return;
+
+      this.updateSessionStatusMarkup(previousDeletingSessionId);
       this.updateSessionStatusMarkup(sessionId);
     }
 
@@ -270,6 +287,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             color: #d7ba7d;
           }
 
+          .sessions-panel__status-deleting {
+            color: #d7ba7d;
+          }
+
           .sessions-panel__status-already-running {
             color: #B81D1D;
           }
@@ -402,6 +423,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (event.key === Keybindings.SPACE) {
         this.dispatchResumeRequest();
         event.preventDefault();
+        return;
+      }
+
+      if (key === Keybindings.D) {
+        this.dispatchDeleteRequest();
+        event.preventDefault();
       }
     }
 
@@ -450,6 +477,25 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       };
 
       this.dispatchEvent(new window.CustomEvent<SessionResumeRequestDetail>("session-resume-request", {
+        bubbles: true,
+        detail,
+      }));
+    }
+
+    /**
+     * Emits the selected session as the requested deletion target.
+     */
+    private dispatchDeleteRequest(): void {
+      const selectedSession = this.selectedSession;
+
+      if (!selectedSession) return;
+
+      const detail: SessionDeleteRequestDetail = {
+        session: selectedSession,
+        projectPath: this.projectPathValue,
+      };
+
+      this.dispatchEvent(new window.CustomEvent<SessionDeleteRequestDetail>("session-delete-request", {
         bubbles: true,
         detail,
       }));
@@ -530,6 +576,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (session.id === this.resumingSessionIdValue) {
         return `<span class="sessions-panel__status-resuming">Resuming...</span>`;
+      }
+
+      if (session.id === this.deletingSessionIdValue) {
+        return `<span class="sessions-panel__status-deleting">Deleting...</span>`;
       }
 
       if (session.id === this.activeSessionIdValue) {
