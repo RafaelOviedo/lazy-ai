@@ -55,7 +55,7 @@ export class CodexSessionRepository implements CodexSessionReader {
       if (!sessionContext?.cwd) continue;
       if (projectPath && sessionContext.cwd !== projectPath) continue;
 
-      const updatedAt = indexRow?.updated_at ?? sessionContext.updatedAt ?? "";
+      const updatedAt = this.resolveLatestTimestamp(indexRow?.updated_at, sessionContext.updatedAt);
 
       sessions.push({
         id: sessionContext.sessionId ?? sessionId,
@@ -497,6 +497,15 @@ export class CodexSessionRepository implements CodexSessionReader {
     if (this.isInjectedContextText(message)) return undefined;
 
     return message.replace(/\s+/g, " ").trim().slice(0, 48);
+  }
+
+  /**
+   * Uses the newest timestamp because Codex can append session activity without refreshing the index row.
+   */
+  private resolveLatestTimestamp(...timestamps: Array<string | undefined>): string {
+    return timestamps
+      .filter((timestamp): timestamp is string => typeof timestamp === "string" && timestamp.trim().length > 0)
+      .sort((left, right) => right.localeCompare(left))[0] ?? "";
   }
 
   /**
