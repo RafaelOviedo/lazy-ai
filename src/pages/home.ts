@@ -320,6 +320,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const customEvent = event as CustomEvent<SessionDeleteRequestDetail>;
     const requestedSession = customEvent.detail.session;
 
+    if (hasOngoingTurn()) return;
     if (sessionDeleteController.isSessionDeleting(requestedSession.id)) return;
 
     openModal(ModalName.confirmDeleteSessionModal, {
@@ -333,6 +334,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openStartNewSessionModal() {
+    if (hasOngoingTurn()) return;
     if (sessionStartController.isSessionStarting()) return;
 
     openModal(ModalName.startNewSessionModal, {
@@ -344,6 +346,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openPromptSessionModal() {
+    if (hasOngoingTurn()) return;
     if (sessionPromptController.isSessionPrompting()) return;
 
     const activeSessionId = sessionResumeController.getActiveSessionId();
@@ -420,6 +423,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!isPlainKeyEvent(event) || key !== Keybindings.N) return false;
 
     event.preventDefault();
+    if (hasOngoingTurn()) return true;
+
     openStartNewSessionModal();
     return true;
   }
@@ -428,6 +433,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!isPlainKeyEvent(event) || key !== Keybindings.P) return false;
 
     event.preventDefault();
+    if (hasOngoingTurn()) return true;
+
     openPromptSessionModal();
     return true;
   }
@@ -459,6 +466,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   function isPlainKeyEvent(event: KeyboardEvent): boolean {
     return !event.altKey && !event.ctrlKey && !event.metaKey;
+  }
+
+  function hasOngoingTurn(): boolean {
+    return sessionPromptController.hasActiveTurn() || sessionStartController.hasActiveTurn();
   }
 
   document.addEventListener("keydown", onKeyDown);
