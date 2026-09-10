@@ -28,12 +28,36 @@ type PendingRequest = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+type PendingTurnCompletion = {
+  reject(error: Error): void;
+  resolve(value: CodexAppServerTurnCompletionResult): void;
+  threadId: string;
+  timer: ReturnType<typeof setTimeout>;
+  turnId?: string;
+};
+
 export type CodexAppServerResumeResult = {
   threadId: string;
 };
 
 export type CodexAppServerDeleteResult = {
   threadId: string;
+};
+
+export type CodexAppServerStartResult = {
+  sessionId: string;
+  threadId: string;
+};
+
+export type CodexAppServerTurnStartResult = {
+  turnId?: string;
+};
+
+export type CodexAppServerTurnCompletionResult = {
+  errorMessage?: string;
+  status: "completed" | "failed" | "interrupted" | "unknown";
+  threadId: string;
+  turnId?: string;
 };
 
 export class CodexAppServerActiveWriterError extends Error {
@@ -54,12 +78,38 @@ type ThreadResumeResponse = {
   };
 };
 
+type ThreadStartResponse = {
+  thread?: {
+    id?: string;
+    sessionId?: string;
+  };
+};
+
+type TurnStartResponse = {
+  turn?: {
+    id?: string;
+  };
+};
+
+type TurnCompletedNotification = {
+  threadId?: string;
+  turn?: {
+    error?: {
+      message?: string;
+    } | null;
+    id?: string;
+    status?: string;
+  };
+};
+
 export class CodexAppServerClient {
   private process: ChildProcessWithoutNullStreams | null = null;
   private stdoutReader: ReadlineInterface | null = null;
   private initializePromise: Promise<void> | null = null;
   private nextRequestId = 1;
   private pendingRequests = new Map<number, PendingRequest>();
+  private pendingTurnCompletions = new Set<PendingTurnCompletion>();
+  private completedTurns: CodexAppServerTurnCompletionResult[] = [];
   private stderrLines: string[] = [];
 
   async resumeThread(threadId: string, cwd?: string): Promise<CodexAppServerResumeResult> {
@@ -88,8 +138,73 @@ export class CodexAppServerClient {
     };
   }
 
+  async startThread(cwd?: string): Promise<CodexAppServerStartResult> {
+    await this.initialize();
+
+    const result = await this.request<ThreadStartResponse>("thread/start", {
+      cwd,
+      historyMode: "legacy",
+      serviceName: "lazy-ai",
+    });
+
+    const threadId = result.thread?.id;
+
+    if (!threadId) {
+      throw new Error("Codex app-server did not return a thread id.");
+    }
+
+    return {
+      threadId,
+      sessionId: result.thread?.sessionId ?? threadId,
+    };
+  }
+
+  async startTurn(threadId: string, prompt: string, cwd?: string): Promise<CodexAppServerTurnStartResult> {
+    await this.initialize();
+
+    const result = await this.request<TurnStartResponse>("turn/start", {
+      threadId,
+      input: [{
+        type: "text",
+        text: prompt,
+        text_elements: [],
+      }],
+      cwd,
+    });
+
+    return {
+      turnId: result.turn?.id,
+    };
+  }
+
+  async waitForTurnCompletion(threadId: string, turnId?: string, timeoutMs = 300000): Promise<CodexAppServerTurnCompletionResult> {
+    await this.initialize();
+
+    const completedTurn = this.findCompletedTurn(threadId, turnId);
+
+    if (completedTurn) return completedTurn;
+
+    return new Promise<CodexAppServerTurnCompletionResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingTurnCompletions.delete(waiter);
+        reject(new Error("Timed out waiting for Codex turn completion."));
+      }, timeoutMs);
+
+      const waiter: PendingTurnCompletion = {
+        reject,
+        resolve,
+        threadId,
+        timer,
+        turnId,
+      };
+
+      this.pendingTurnCompletions.add(waiter);
+    });
+  }
+
   dispose(): void {
     this.rejectPendingRequests(new Error("Codex app-server client disposed."));
+    this.rejectPendingTurnCompletions(new Error("Codex app-server client disposed."));
 
     this.stdoutReader?.close();
     this.stdoutReader = null;
@@ -205,7 +320,10 @@ export class CodexAppServerClient {
       return;
     }
 
-    if (typeof message.id !== "number") return;
+    if (typeof message.id !== "number") {
+      this.handleNotification(message as JsonRpcNotification);
+      return;
+    }
 
     const pendingRequest = this.pendingRequests.get(message.id);
 
@@ -229,6 +347,57 @@ export class CodexAppServerClient {
     pendingRequest.resolve(message.result);
   }
 
+  private handleNotification(notification: JsonRpcNotification): void {
+    if (notification.method !== "turn/completed") return;
+
+    const completion = this.readTurnCompletedNotification(notification.params);
+
+    if (!completion) return;
+
+    this.completedTurns.push(completion);
+    this.completedTurns = this.completedTurns.slice(-20);
+
+    for (const waiter of this.pendingTurnCompletions) {
+      if (!this.matchesTurnCompletion(waiter, completion)) continue;
+
+      clearTimeout(waiter.timer);
+      this.pendingTurnCompletions.delete(waiter);
+      waiter.resolve(completion);
+    }
+  }
+
+  private readTurnCompletedNotification(params: unknown): CodexAppServerTurnCompletionResult | null {
+    const notification = params as TurnCompletedNotification | undefined;
+    const threadId = notification?.threadId;
+
+    if (!threadId) return null;
+
+    const status = this.readTurnCompletionStatus(notification.turn?.status);
+
+    return {
+      errorMessage: notification.turn?.error?.message,
+      status,
+      threadId,
+      turnId: notification.turn?.id,
+    };
+  }
+
+  private readTurnCompletionStatus(status: string | undefined): CodexAppServerTurnCompletionResult["status"] {
+    if (status === "completed" || status === "failed" || status === "interrupted") return status;
+
+    return "unknown";
+  }
+
+  private findCompletedTurn(threadId: string, turnId?: string): CodexAppServerTurnCompletionResult | null {
+    return [...this.completedTurns].reverse().find((completion) => {
+      return completion.threadId === threadId && (!turnId || completion.turnId === turnId);
+    }) ?? null;
+  }
+
+  private matchesTurnCompletion(waiter: PendingTurnCompletion, completion: CodexAppServerTurnCompletionResult): boolean {
+    return completion.threadId === waiter.threadId && (!waiter.turnId || completion.turnId === waiter.turnId);
+  }
+
   private recordStderr(chunk: Buffer): void {
     const lines = chunk.toString("utf8")
       .split(/\r?\n/)
@@ -241,6 +410,7 @@ export class CodexAppServerClient {
 
   private handleProcessError(error: Error): void {
     this.rejectPendingRequests(new Error(`Codex app-server failed to start: ${error.message}`));
+    this.rejectPendingTurnCompletions(new Error(`Codex app-server failed to start: ${error.message}`));
     this.initializePromise = null;
     this.process = null;
   }
@@ -250,6 +420,7 @@ export class CodexAppServerClient {
     const reason = signal ? `signal ${signal}` : `code ${code ?? "unknown"}`;
 
     this.rejectPendingRequests(new Error(`Codex app-server exited with ${reason}.${stderr}`));
+    this.rejectPendingTurnCompletions(new Error(`Codex app-server exited with ${reason}.${stderr}`));
     this.initializePromise = null;
     this.process = null;
     this.stdoutReader = null;
@@ -262,6 +433,15 @@ export class CodexAppServerClient {
     }
 
     this.pendingRequests.clear();
+  }
+
+  private rejectPendingTurnCompletions(error: Error): void {
+    for (const pendingTurnCompletion of this.pendingTurnCompletions.values()) {
+      clearTimeout(pendingTurnCompletion.timer);
+      pendingTurnCompletion.reject(error);
+    }
+
+    this.pendingTurnCompletions.clear();
   }
 
   private formatResponseError(method: string, error: NonNullable<JsonRpcResponse["error"]>): string {

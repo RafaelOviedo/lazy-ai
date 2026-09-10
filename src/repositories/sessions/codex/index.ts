@@ -48,21 +48,18 @@ export class CodexSessionRepository implements CodexSessionReader {
     const sessionFiles = await this.findSessionFiles(this.sessionsDirectoryPath);
     const sessions: CodexSessionSummary[] = [];
 
-    for (const row of latestIndexRows.values()) {
-      const sessionFilePath = sessionFiles.get(row.id);
-
-      if (!sessionFilePath) continue;
-
+    for (const [sessionId, sessionFilePath] of sessionFiles) {
+      const indexRow = latestIndexRows.get(sessionId);
       const sessionContext = await this.readSessionContext(sessionFilePath);
 
       if (!sessionContext?.cwd) continue;
       if (projectPath && sessionContext.cwd !== projectPath) continue;
 
-      const updatedAt = row.updated_at ?? "";
+      const updatedAt = indexRow?.updated_at ?? sessionContext.updatedAt ?? "";
 
       sessions.push({
-        id: row.id,
-        title: row.thread_name?.trim() || "Untitled session",
+        id: sessionContext.sessionId ?? sessionId,
+        title: this.resolveSessionTitle(indexRow?.thread_name, sessionContext.title),
         updatedAt,
         relativeUpdated: this.formatRelativeTime(updatedAt),
         projectPath: sessionContext.cwd,
@@ -127,7 +124,8 @@ export class CodexSessionRepository implements CodexSessionReader {
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
-        .map((line) => JSON.parse(line) as T);
+        .map((line) => this.parseJsonObject(line) as T | null)
+        .filter((record): record is T => record !== null);
     } catch {
       return [];
     }
@@ -177,6 +175,7 @@ export class CodexSessionRepository implements CodexSessionReader {
       const text = this.readContentText(payload.content).trim();
 
       if (!role || !text) return null;
+      if (role === "user" && this.isInjectedUserMessage(payload, text)) return null;
 
       return {
         id: this.readString(payload.id) ?? fallbackId,
@@ -215,6 +214,33 @@ export class CodexSessionRepository implements CodexSessionReader {
       })
       .filter(Boolean)
       .join("\n\n");
+  }
+
+  /**
+   * Skips host-injected context records that are stored as user messages.
+   */
+  private isInjectedUserMessage(payload: Record<string, unknown>, text: string): boolean {
+    const metadata = payload.internal_chat_message_metadata_passthrough;
+
+    if (this.isObject(metadata) && Array.isArray(metadata.content_item_kinds)) {
+      return !metadata.content_item_kinds.includes("user.text");
+    }
+
+    return this.isInjectedContextText(text);
+  }
+
+  /**
+   * Identifies setup/context blocks that should not become conversation titles.
+   */
+  private isInjectedContextText(text: string): boolean {
+    const normalizedText = text.trim();
+
+    return normalizedText.startsWith("<recommended_plugins>")
+      || normalizedText.startsWith("<environment_context>")
+      || normalizedText.startsWith("<skills_instructions>")
+      || normalizedText.startsWith("<permissions instructions>")
+      || normalizedText.startsWith("<apps_instructions>")
+      || normalizedText.startsWith("<plugins_instructions>");
   }
 
   /**
@@ -258,28 +284,57 @@ export class CodexSessionRepository implements CodexSessionReader {
 
         if (!trimmedLine) continue;
 
-        const record = JSON.parse(trimmedLine) as SessionMetaEvent | ThreadSettingsAppliedEvent | TokenCountEvent | TurnContextEvent;
+        const record = this.parseJsonObject(trimmedLine);
+
+        if (!record) continue;
+
+        const timestamp = this.readString(record.timestamp);
+
+        if (timestamp && (!sessionContext.updatedAt || timestamp.localeCompare(sessionContext.updatedAt) > 0)) {
+          sessionContext.updatedAt = timestamp;
+        }
 
         if (record.type === "session_meta" && record.payload) {
-          sessionContext.cwd = record.payload.cwd ?? sessionContext.cwd;
-          sessionContext.model = record.payload.model ?? sessionContext.model;
+          const payload = record.payload as SessionMetaEvent["payload"] & { id?: string; session_id?: string };
+
+          sessionContext.cwd = payload.cwd ?? sessionContext.cwd;
+          sessionContext.model = payload.model ?? sessionContext.model;
+          sessionContext.sessionId = payload.session_id ?? payload.id ?? sessionContext.sessionId;
           continue;
         }
 
         if (record.type === "turn_context" && record.payload) {
-          sessionContext.cwd = sessionContext.cwd ?? record.payload.cwd;
-          sessionContext.model = record.payload.model ?? sessionContext.model;
+          const payload = record.payload as NonNullable<TurnContextEvent["payload"]>;
+
+          sessionContext.cwd = sessionContext.cwd ?? payload.cwd;
+          sessionContext.model = payload.model ?? sessionContext.model;
           continue;
         }
 
-        if (record.type === "event_msg" && record.payload?.type === "thread_settings_applied") {
-          sessionContext.model = record.payload.thread_settings?.model ?? sessionContext.model;
+        if (record.type === "event_msg" && this.isObject(record.payload) && record.payload.type === "thread_settings_applied") {
+          const payload = record.payload as NonNullable<ThreadSettingsAppliedEvent["payload"]>;
+
+          sessionContext.model = payload.thread_settings?.model ?? sessionContext.model;
           continue;
         }
 
-        if (record.type === "event_msg" && record.payload?.type === "token_count") {
-          const usedTokens = record.payload.info?.last_token_usage?.input_tokens;
-          const maxTokens = record.payload.info?.model_context_window;
+        if (record.type === "event_msg" && this.isObject(record.payload) && record.payload.type === "user_message") {
+          const message = this.readString(record.payload.message);
+
+          sessionContext.title = sessionContext.title ?? this.formatSessionTitle(message);
+          continue;
+        }
+
+        const conversationMessage = this.readConversationMessage(record, "");
+
+        if (conversationMessage?.role === "user") {
+          sessionContext.title = sessionContext.title ?? this.formatSessionTitle(conversationMessage.text);
+        }
+
+        if (record.type === "event_msg" && this.isObject(record.payload) && record.payload.type === "token_count") {
+          const payload = record.payload as NonNullable<TokenCountEvent["payload"]>;
+          const usedTokens = payload.info?.last_token_usage?.input_tokens;
+          const maxTokens = payload.info?.model_context_window;
 
           if (this.isPositiveNumber(usedTokens) && this.isPositiveNumber(maxTokens)) {
             sessionContext.contextUsage = {
@@ -289,8 +344,8 @@ export class CodexSessionRepository implements CodexSessionReader {
             };
           }
 
-          if (record.payload.rate_limits) {
-            sessionContext.usageLimit = this.readUsageLimit(record.payload.rate_limits, sessionContext.usageLimit);
+          if (payload.rate_limits) {
+            sessionContext.usageLimit = this.readUsageLimit(payload.rate_limits, sessionContext.usageLimit);
           }
         }
       }
@@ -316,9 +371,9 @@ export class CodexSessionRepository implements CodexSessionReader {
 
         if (!trimmedLine) continue;
 
-        const record = JSON.parse(trimmedLine) as TokenCountEvent;
+        const record = this.parseJsonObject(trimmedLine) as TokenCountEvent | null;
 
-        if (record.type !== "event_msg" || record.payload?.type !== "token_count" || !record.payload.rate_limits || !record.timestamp) {
+        if (!record || record.type !== "event_msg" || record.payload?.type !== "token_count" || !record.payload.rate_limits || !record.timestamp) {
           continue;
         }
 
@@ -432,6 +487,29 @@ export class CodexSessionRepository implements CodexSessionReader {
     const match = fileName.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i);
 
     return match?.[1] ?? null;
+  }
+
+  /**
+   * Builds a compact title from the first user-visible prompt.
+   */
+  private formatSessionTitle(message: string | null): string | undefined {
+    if (!message) return undefined;
+    if (this.isInjectedContextText(message)) return undefined;
+
+    return message.replace(/\s+/g, " ").trim().slice(0, 48);
+  }
+
+  /**
+   * Prefers generated thread titles, but ignores placeholder index names.
+   */
+  private resolveSessionTitle(indexTitle: string | undefined, fallbackTitle: string | undefined): string {
+    const normalizedIndexTitle = indexTitle?.trim();
+
+    if (normalizedIndexTitle && normalizedIndexTitle !== "Untitled session") {
+      return normalizedIndexTitle;
+    }
+
+    return fallbackTitle ?? "Untitled session";
   }
 
   /**

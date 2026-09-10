@@ -139,5 +139,8 @@ export type SessionContext = {
   cwd?: string;
   model?: string;
   contextUsage?: ContextUsage;
+  sessionId?: string;
+  title?: string;
+  updatedAt?: string;
   usageLimit?: UsageLimit;
 };

@@ -16,6 +16,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
    * Renders the current project/session status.
    */
   class StatusPanel extends window.HTMLElement {
+    private activityStatusValue: string | null = null;
     private loadErrorValue: string | null = null;
     private projectLoadErrorValue: string | null = null;
     private selectedSessionValue: CodexSessionSummary | null = null;
@@ -26,6 +27,26 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
      */
     connectedCallback(): void {
       this.render();
+    }
+
+    /**
+     * Updates transient activity status.
+     */
+    set activityStatus(value: string | null) {
+      if (this.activityStatusValue === value) return;
+
+      this.activityStatusValue = value;
+
+      if (this.isConnected) {
+        this.render();
+      }
+    }
+
+    /**
+     * Returns transient activity status.
+     */
+    get activityStatus(): string | null {
+      return this.activityStatusValue;
     }
 
     /**
@@ -146,6 +167,10 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
           .status-panel__muted {
             color: #8aa4bf;
           }
+
+          .status-panel__activity {
+            color: #d7ba7d;
+          }
         </style>
 
         <legend class="status-panel__title">Global status</legend>
@@ -165,8 +190,12 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
         return `${escapeHtml(this.loadErrorValue)}${this.renderUsageLimitSuffix()}`;
       }
 
+      if (this.activityStatusValue) {
+        return `<span class="status-panel__activity">${escapeHtml(this.activityStatusValue)}</span>${this.renderUsageLimitSuffix()}`;
+      }
+
       if (!this.selectedSessionValue) {
-        return `Sessions panel ready. No saved session selected.${this.renderUsageLimitSuffix()}`;
+        return `Sessions panel ready. No saved session selected. ${this.renderUsageLimitSuffix()}`;
       }
 
       return `Codex · ${this.renderUsageLimitSuffix()}`;
@@ -188,7 +217,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
         const creditsLabel = this.formatCredits(snapshot.usageLimit.credits, Boolean(reachedLabel));
         const details = [reachedLabel, creditsLabel, observedAt].filter(Boolean).join(" · ");
 
-        return ` · Limit usage ${details ? escapeHtml(details) : "unavailable"}`;
+        return `Limit usage ${details ? escapeHtml(details) : "unavailable"}`;
       }
 
       const remainingPercent = this.formatPercent(limitWindow.remainingPercent);

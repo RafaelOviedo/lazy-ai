@@ -22,6 +22,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private activeSessionIdValue: string | null = null;
     private resumingSessionIdValue: string | null = null;
     private deletingSessionIdValue: string | null = null;
+    private thinkingSessionIdValue: string | null = null;
     private alreadyRunningSessionIdValue: string | null = null;
     private resumeFailedSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
@@ -90,12 +91,37 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     set activeSessionId(value: string | null) {
       if (this.activeSessionIdValue === value) return;
 
-      const shouldSelectActiveSession = value !== null;
+      const previousActiveSessionId = this.activeSessionIdValue;
+      const previousSelectedSessionIndex = this.selectedSessionIndex;
       this.activeSessionIdValue = value;
 
       if (this.isConnected) {
-        this.promoteActiveSession(shouldSelectActiveSession);
-        this.render();
+        if (value) {
+          const activeSessionIndex = this.sessions.findIndex((session) => session.id === value);
+
+          if (activeSessionIndex !== -1) {
+            if (activeSessionIndex > 0) {
+              const activeSession = this.sessions[activeSessionIndex];
+
+              this.sessions.splice(activeSessionIndex, 1);
+              this.sessions.unshift(activeSession);
+            }
+
+            this.selectedSessionIndex = 0;
+            this.syncSessionListMarkup(value);
+            this.updateSessionStatusMarkup(previousActiveSessionId);
+            this.updateSessionStatusMarkup(value);
+            this.updateSelectedSessionMarkup(previousSelectedSessionIndex, this.selectedSessionIndex);
+            this.updateSessionCountMarkup();
+            this.revealSelectedSession();
+            this.dispatchSelectionChange();
+            return;
+          }
+        }
+
+        this.updateSessionStatusMarkup(previousActiveSessionId);
+        this.updateSessionStatusMarkup(value);
+        this.updateSessionCountMarkup();
         this.revealSelectedSession();
         this.dispatchSelectionChange();
       }
@@ -137,6 +163,22 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (!this.isConnected) return;
 
       this.updateSessionStatusMarkup(previousDeletingSessionId);
+      this.updateSessionStatusMarkup(sessionId);
+    }
+
+    /**
+     * Updates the session id currently waiting on an initial model response.
+     */
+    setSessionThinking(sessionId: string | null): void {
+      if (this.thinkingSessionIdValue === sessionId) return;
+
+      const previousThinkingSessionId = this.thinkingSessionIdValue;
+
+      this.thinkingSessionIdValue = sessionId;
+
+      if (!this.isConnected) return;
+
+      this.updateSessionStatusMarkup(previousThinkingSessionId);
       this.updateSessionStatusMarkup(sessionId);
     }
 
@@ -191,6 +233,20 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Returns one loaded session by id when it is present in the current list.
+     */
+    getSession(sessionId: string): CodexSessionSummary | null {
+      return this.sessions.find((session) => session.id === sessionId) ?? null;
+    }
+
+    /**
+     * Reports whether the current rendered session list contains one session id.
+     */
+    hasSession(sessionId: string): boolean {
+      return this.sessions.some((session) => session.id === sessionId);
+    }
+
+    /**
      * Loads the latest sessions for the active project and refreshes the panel.
      */
     async reload(): Promise<void> {
@@ -212,6 +268,28 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.render();
       this.revealSelectedSession();
       this.dispatchSelectionChange();
+    }
+
+    /**
+     * Refreshes one session from storage and reconciles its row without entering full-panel loading.
+     */
+    async syncSession(sessionId: string): Promise<CodexSessionSummary | null> {
+      try {
+        const sessions = await this.sessionReader.listByProject(this.projectPathValue);
+        const session = sessions.find((candidateSession) => candidateSession.id === sessionId) ?? null;
+
+        if (!session) return null;
+
+        this.loadError = null;
+        this.upsertSession(session);
+
+        return session;
+      } catch {
+        this.loadError = "Failed to load Codex sessions.";
+        this.dispatchSelectionChange();
+
+        return null;
+      }
     }
 
     /**
@@ -256,6 +334,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           .sessions-panel__content {
             overflow: scroll;
             max-height: 15px;
+            height: 12px;
           }
 
           .sessions-panel__item {
@@ -288,6 +367,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           }
 
           .sessions-panel__status-deleting {
+            color: #d7ba7d;
+          }
+
+          .sessions-panel__status-thinking {
             color: #d7ba7d;
           }
 
@@ -334,6 +417,16 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Updates only the affected session rows instead of rebuilding the panel.
      */
     private updateSelectedSessionMarkup(previousSessionIndex: number, nextSessionIndex: number): void {
+      if (previousSessionIndex === nextSessionIndex) {
+        const item = this.getSessionItemElement(nextSessionIndex);
+
+        if (item) {
+          this.setSessionItemSelected(item, true);
+        }
+
+        return;
+      }
+
       const previousItem = this.getSessionItemElement(previousSessionIndex);
       const nextItem = this.getSessionItemElement(nextSessionIndex);
 
@@ -344,12 +437,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       this.setSessionItemSelected(previousItem, false);
       this.setSessionItemSelected(nextItem, true);
-
-      const counter = this.querySelector<HTMLElement>(".sessions-panel__counter");
-
-      if (counter) {
-        counter.textContent = this.renderSessionCountMarkup();
-      }
+      this.updateSessionCountMarkup();
     }
 
     /**
@@ -357,6 +445,21 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      */
     private getSessionItemElement(index: number): HTMLElement | null {
       return this.querySelector<HTMLElement>(`[data-session-index="${index}"]`);
+    }
+
+    /**
+     * Finds one rendered session row by session id.
+     */
+    private getSessionItemElementById(sessionId: string): HTMLElement | null {
+      const items = this.querySelectorAll<HTMLElement>("[data-session-id]");
+
+      for (const item of items) {
+        if (item.getAttribute("data-session-id") === sessionId) {
+          return item;
+        }
+      }
+
+      return null;
     }
 
     /**
@@ -391,6 +494,105 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (!status || index === -1) return;
 
       status.innerHTML = this.renderSessionStatusMarkup(this.sessions[index]);
+    }
+
+    /**
+     * Updates the session count label in place.
+     */
+    private updateSessionCountMarkup(): void {
+      const counter = this.querySelector<HTMLElement>(".sessions-panel__counter");
+
+      if (counter) {
+        counter.textContent = this.renderSessionCountMarkup();
+      }
+    }
+
+    /**
+     * Inserts or updates one session in the rendered list.
+     */
+    private upsertSession(session: CodexSessionSummary): void {
+      if (this.projectPathValue && session.projectPath !== this.projectPathValue) return;
+
+      const selectedSessionId = this.selectedSession?.id ?? null;
+      const existingSessionIndex = this.sessions.findIndex((candidateSession) => candidateSession.id === session.id);
+
+      if (existingSessionIndex === -1) {
+        this.sessions.unshift(session);
+      } else {
+        this.sessions[existingSessionIndex] = session;
+
+        if (existingSessionIndex > 0) {
+          this.sessions.splice(existingSessionIndex, 1);
+          this.sessions.unshift(session);
+        }
+      }
+
+      if (this.activeSessionIdValue === session.id) {
+        this.selectedSessionIndex = 0;
+      } else if (selectedSessionId) {
+        this.selectedSessionIndex = Math.max(0, this.sessions.findIndex((candidateSession) => candidateSession.id === selectedSessionId));
+      } else {
+        this.selectedSessionIndex = 0;
+      }
+
+      if (!this.isConnected) return;
+
+      this.isLoading = false;
+
+      if (!this.syncSessionListMarkup(session.id)) {
+        this.render();
+      }
+
+      this.updateSessionCountMarkup();
+      this.revealSelectedSession();
+      this.dispatchSelectionChange();
+    }
+
+    /**
+     * Reconciles the DOM around one changed session row.
+     */
+    private syncSessionListMarkup(changedSessionId: string): boolean {
+      const content = this.querySelector<HTMLElement>(".sessions-panel__content");
+
+      if (!content) return false;
+
+      const changedSessionIndex = this.sessions.findIndex((session) => session.id === changedSessionId);
+
+      if (changedSessionIndex === -1) return false;
+
+      const changedSession = this.sessions[changedSessionIndex];
+      const hasRenderedRows = this.querySelector("[data-session-id]") !== null;
+      const existingItem = this.getSessionItemElementById(changedSessionId);
+
+      if (!hasRenderedRows) {
+        content.innerHTML = this.renderSessionItemMarkup(changedSession, changedSessionIndex);
+      } else if (!existingItem) {
+        content.insertAdjacentHTML("afterbegin", this.renderSessionItemMarkup(changedSession, changedSessionIndex));
+      } else {
+        existingItem.outerHTML = this.renderSessionItemMarkup(changedSession, changedSessionIndex);
+
+        const updatedItem = this.getSessionItemElementById(changedSessionId);
+
+        if (updatedItem && changedSessionIndex === 0 && content.firstElementChild !== updatedItem) {
+          content.insertBefore(updatedItem, content.firstElementChild);
+        }
+      }
+
+      this.syncSessionItemIndexes();
+
+      return true;
+    }
+
+    /**
+     * Keeps rendered row indexes and selection markers aligned with the session array.
+     */
+    private syncSessionItemIndexes(): void {
+      const items = this.querySelectorAll<HTMLElement>("[data-session-id]");
+
+      items.forEach((item, index) => {
+        item.setAttribute("data-session-index", String(index));
+        this.setSessionItemSelected(item, index === this.selectedSessionIndex);
+      });
     }
 
     /**
@@ -548,18 +750,23 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         `;
       }
 
-      return this.sessions.map((session, index) => {
-        const marker = index === this.selectedSessionIndex ? "◉" : "○";
-        const selectedClass = index === this.selectedSessionIndex ? "sessions-panel__item is-selected" : "sessions-panel__item";
-        const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
-
-        return `
-          <div class="${selectedClass}" data-session-index="${index}"${selectedAttribute}>
-            <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · <span data-session-status="true">${this.renderSessionStatusMarkup(session)}</span></span></div>
-          </div>
-        `;
-      })
+      return this.sessions.map((session, index) => this.renderSessionItemMarkup(session, index))
         .join("");
+    }
+
+    /**
+     * Builds one saved-session row.
+     */
+    private renderSessionItemMarkup(session: CodexSessionSummary, index: number): string {
+      const marker = index === this.selectedSessionIndex ? "◉" : "○";
+      const selectedClass = index === this.selectedSessionIndex ? "sessions-panel__item is-selected" : "sessions-panel__item";
+      const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
+
+      return `
+        <div class="${selectedClass}" data-session-id="${escapeHtml(session.id)}" data-session-index="${index}"${selectedAttribute}>
+          <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · <span data-session-status="true">${this.renderSessionStatusMarkup(session)}</span></span></div>
+        </div>
+      `;
     }
 
     /**
@@ -580,6 +787,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (session.id === this.deletingSessionIdValue) {
         return `<span class="sessions-panel__status-deleting">Deleting...</span>`;
+      }
+
+      if (session.id === this.thinkingSessionIdValue) {
+        return `<span class="sessions-panel__status-thinking">Thinking...</span>`;
       }
 
       if (session.id === this.activeSessionIdValue) {

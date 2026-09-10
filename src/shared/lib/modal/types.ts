@@ -1,6 +1,7 @@
 export enum ModalName {
   confirmDeleteSessionModal = "ConfirmDeleteSessionModal",
   helpInfoModal = "HelpInfoModal",
+  startNewSessionModal = "StartNewSessionModal",
 }
 
 export type ModalPayload<T = unknown> = T;

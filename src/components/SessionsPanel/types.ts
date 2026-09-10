@@ -23,11 +23,15 @@ export type SessionDeleteRequestDetail = {
 export type SessionsPanelElement = HTMLElement & {
   activeSessionId: string | null;
   projectPath: string;
+  getSession(sessionId: string): CodexSessionSummary | null;
+  hasSession(sessionId: string): boolean;
   setSessionAlreadyRunning(sessionId: string | null): void;
   setSessionDeleting(sessionId: string | null): void;
   setSessionResumeFailed(sessionId: string | null): void;
   setSessionResuming(sessionId: string | null): void;
+  setSessionThinking(sessionId: string | null): void;
   repository: CodexSessionReader;
   readonly selectedSession: CodexSessionSummary | null;
   reload(): Promise<void>;
+  syncSession(sessionId: string): Promise<CodexSessionSummary | null>;
 };

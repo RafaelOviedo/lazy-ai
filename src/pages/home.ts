@@ -21,7 +21,7 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
-import { createSessionDeleteController, createSessionResumeController } from "../shared/lib/sessions/index.js";
+import { createSessionDeleteController, createSessionResumeController, createSessionStartController } from "../shared/lib/sessions/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
@@ -121,6 +121,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   let selectedSession: CodexSessionSummary | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
+  let activityStatus: string | null = null;
 
   let loadError: string | null = null;
   let projectLoadError: string | null = null;
@@ -160,6 +161,30 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     syncStatusPanel,
   });
 
+  const sessionStartController = createSessionStartController({
+    client: appServerClient,
+    getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
+    setActivityStatus: (status) => {
+      activityStatus = status;
+    },
+    setActiveSessionId: (sessionId) => {
+      if (sessionsPanel) {
+        sessionsPanel.activeSessionId = sessionId;
+      }
+    },
+    setDetailsThinkingSessionId: (sessionId) => {
+      if (detailsPanel) {
+        detailsPanel.thinkingSessionId = sessionId;
+      }
+    },
+    setLoadError: (error) => {
+      loadError = error;
+    },
+    setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
+    syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
+    syncStatusPanel,
+  });
+
   if (detailsPanel) {
     detailsPanel.repository = sessionReader;
   }
@@ -182,6 +207,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function syncStatusPanel() {
     if (!statusPanel) return;
 
+    statusPanel.activityStatus = activityStatus;
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;
@@ -273,11 +299,23 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     });
   }
 
+  function openStartNewSessionModal() {
+    if (sessionStartController.isSessionStarting()) return;
+
+    openModal(ModalName.startNewSessionModal, {
+      onConfirm: (prompt: string) => {
+        closeModal();
+        void sessionStartController.startSession(prompt, selectedProjectPath);
+      },
+    });
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
 
     if (getModalConfig().isActive) return;
     if (handleModalShortcuts(event, key)) return;
+    if (handleNewSessionShortcut(event, key)) return;
     if (handleQuitShortcut(event, key)) return;
     if (handlePanelNavigation(event, key)) return;
   }
@@ -287,6 +325,14 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     event.preventDefault();
     openModal(ModalName.helpInfoModal);
+    return true;
+  }
+
+  function handleNewSessionShortcut(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.N) return false;
+
+    event.preventDefault();
+    openStartNewSessionModal();
     return true;
   }
 
@@ -343,6 +389,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   return () => {
     sessionDeleteController.dispose();
     sessionResumeController.dispose();
+    sessionStartController.dispose();
     appServerClient.dispose();
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-delete-request", onSessionDeleteRequest);

@@ -8,4 +8,5 @@ export type DetailsPanelElement = HTMLElement & {
   readonly isConversationLoading: boolean;
   repository: CodexSessionReader;
   selectedSession: CodexSessionSummary | null;
+  thinkingSessionId: string | null;
 };

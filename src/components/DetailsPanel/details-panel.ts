@@ -20,12 +20,15 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
    */
   class DetailsPanel extends window.HTMLElement {
     private selectedSessionValue: CodexSessionSummary | null = null;
+    private thinkingSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private messages: CodexConversationMessage[] = [];
     private isLoading = false;
     private loadError: string | null = null;
     private loadVersion = 0;
     private loadTimer: ReturnType<typeof setTimeout> | null = null;
+    private renderedMessageFingerprints = new Map<string, string>();
+    private renderedSessionId: string | null = null;
 
     constructor() {
       super();
@@ -82,12 +85,15 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Updates the selected session shown in the details panel.
      */
     set selectedSession(value: CodexSessionSummary | null) {
+      const previousSessionId = this.selectedSessionValue?.id ?? null;
+      const nextSessionId = value?.id ?? null;
+
       if (this.selectedSessionValue === value) return;
 
       this.selectedSessionValue = value;
 
       if (this.isConnected) {
-        this.scheduleConversationLoad();
+        this.scheduleConversationLoad(previousSessionId === nextSessionId && nextSessionId !== null);
       }
     }
 
@@ -96,6 +102,26 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     get selectedSession(): CodexSessionSummary | null {
       return this.selectedSessionValue;
+    }
+
+    /**
+     * Updates the session currently waiting for model output.
+     */
+    set thinkingSessionId(value: string | null) {
+      if (this.thinkingSessionIdValue === value) return;
+
+      this.thinkingSessionIdValue = value;
+
+      if (this.isConnected) {
+        this.syncThinkingMarkup();
+      }
+    }
+
+    /**
+     * Returns the session currently waiting for model output.
+     */
+    get thinkingSessionId(): string | null {
+      return this.thinkingSessionIdValue;
     }
 
     /**
@@ -155,6 +181,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
           .details-panel__muted {
             color: #8aa4bf;
+          }
+
+          .details-panel__thinking {
+            color: #d7ba7d;
+            padding: 1px;
           }
 
           .details-panel__message {
@@ -263,6 +294,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           ${this.renderContentMarkup()}
         </div>
       `;
+
+      this.renderedSessionId = this.selectedSessionValue?.id ?? null;
+      this.syncRenderedMessageFingerprints();
     }
 
     /**
@@ -292,52 +326,86 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (this.messages.length === 0) {
         return `
           <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
-          <div class="details-panel__muted" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>
+          ${this.isSelectedSessionThinking()
+            ? ""
+            : `<div class="details-panel__muted" data-empty-conversation="true" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>`}
+          <div data-conversation-messages="true">
+            ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
+          </div>
         `;
       }
 
       return `
         <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
-        <div>
+        <div data-conversation-messages="true">
           ${this.messages.map((message) => this.renderMessageMarkup(message)).join("")}
+          ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
         </div>
       `;
     }
 
     /**
+     * Returns whether the selected session is awaiting its first response.
+     */
+    private isSelectedSessionThinking(): boolean {
+      return this.selectedSessionValue?.id === this.thinkingSessionIdValue;
+    }
+
+    /**
+     * Builds the pending assistant response row.
+     */
+    private renderThinkingMarkup(): string {
+      return `<div class="details-panel__thinking" data-thinking-row="true">Thinking...</div>`;
+    }
+
+    /**
      * Shows the loading state immediately and defers heavier transcript loading.
      */
-    private scheduleConversationLoad(): void {
+    private scheduleConversationLoad(preserveExistingMessages = false): void {
       const selectedSession = this.selectedSessionValue;
       const loadVersion = ++this.loadVersion;
+      const canReconcileExistingMarkup = preserveExistingMessages && this.canReconcileExistingMarkup();
 
       if (this.loadTimer) {
         clearTimeout(this.loadTimer);
         this.loadTimer = null;
       }
 
-      this.messages = [];
       this.loadError = null;
 
       if (!selectedSession) {
+        this.messages = [];
         this.isLoading = false;
+        this.renderedMessageFingerprints.clear();
+        this.renderedSessionId = null;
         this.render();
         return;
       }
 
-      this.isLoading = true;
-      this.render();
+      if (canReconcileExistingMarkup) {
+        this.isLoading = false;
+        this.syncTitleMarkup();
+      } else {
+        this.messages = [];
+        this.renderedMessageFingerprints.clear();
+        this.isLoading = true;
+        this.render();
+      }
 
       this.loadTimer = setTimeout(() => {
         this.loadTimer = null;
-        void this.loadConversation(selectedSession, loadVersion);
+        void this.loadConversation(selectedSession, loadVersion, canReconcileExistingMarkup);
       }, conversationLoadDelayMs);
     }
 
     /**
      * Loads the selected session transcript.
      */
-    private async loadConversation(selectedSession: CodexSessionSummary, loadVersion: number): Promise<void> {
+    private async loadConversation(
+      selectedSession: CodexSessionSummary,
+      loadVersion: number,
+      reconcileExistingMarkup: boolean,
+    ): Promise<void> {
       if (loadVersion !== this.loadVersion) return;
 
       try {
@@ -347,6 +415,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
         this.messages = conversation.messages;
         this.isLoading = false;
+        this.loadError = null;
+
+        if (reconcileExistingMarkup && this.syncConversationMarkup(conversation.messages)) {
+          this.scrollToBottom();
+          return;
+        }
+
         this.render();
         this.scrollToBottom();
       } catch {
@@ -363,17 +438,214 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Builds one transcript row.
      */
     private renderMessageMarkup(message: CodexConversationMessage): string {
+      return `
+        <div class="details-panel__message" data-conversation-message="true" data-message-id="${escapeHtml(message.id)}">
+          ${this.renderMessageInnerMarkup(message)}
+        </div>
+      `;
+    }
+
+    /**
+     * Builds the content inside one transcript row.
+     */
+    private renderMessageInnerMarkup(message: CodexConversationMessage): string {
       const roleLabel = this.formatRoleLabel(message.role);
       const timestamp = this.formatTimestamp(message.timestamp);
 
       return `
-        <div class="details-panel__message" data-conversation-message="true">
-          <div class="details-panel__message-header">
-            <span class="details-panel__message-role details-panel__message-role--${message.role}">${roleLabel}</span>${timestamp ? ` · ${escapeHtml(timestamp)}` : ""}
-          </div>
-          <div class="details-panel__message-text">${this.renderMessageTextMarkup(message)}</div>
+        <div class="details-panel__message-header">
+          <span class="details-panel__message-role details-panel__message-role--${message.role}">${roleLabel}</span>${timestamp ? ` · ${escapeHtml(timestamp)}` : ""}
         </div>
+        <div class="details-panel__message-text">${this.renderMessageTextMarkup(message)}</div>
       `;
+    }
+
+    /**
+     * Updates the details title without rebuilding the transcript.
+     */
+    private syncTitleMarkup(): void {
+      const title = this.querySelector<HTMLElement>(".details-panel__title");
+      const sessionTitle = this.querySelector<HTMLElement>(".details-panel__session-title");
+
+      if (title) {
+        title.textContent = this.selectedSessionValue?.title ? `Details - ${this.selectedSessionValue.title}` : "Details";
+      }
+
+      if (sessionTitle && this.selectedSessionValue) {
+        sessionTitle.textContent = this.selectedSessionValue.title;
+      }
+    }
+
+    /**
+     * Appends or updates rendered message rows for a same-session refresh.
+     */
+    private syncConversationMarkup(messages: CodexConversationMessage[]): boolean {
+      if (!this.selectedSessionValue || this.renderedSessionId !== this.selectedSessionValue.id) return false;
+
+      const messagesContainer = this.getMessagesContainer();
+
+      if (!messagesContainer) return false;
+
+      this.syncTitleMarkup();
+      this.removeThinkingMarkup();
+
+      for (const message of messages) {
+        const fingerprint = this.getMessageFingerprint(message);
+        const existingMessage = this.getMessageElement(message.id);
+
+        if (existingMessage) {
+          if (this.renderedMessageFingerprints.get(message.id) !== fingerprint) {
+            existingMessage.innerHTML = this.renderMessageInnerMarkup(message);
+          }
+        } else {
+          messagesContainer.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
+        }
+
+        this.renderedMessageFingerprints.set(message.id, fingerprint);
+      }
+
+      if (messages.length > 0 || this.isSelectedSessionThinking()) {
+        this.removeEmptyConversationMarkup();
+      }
+
+      this.syncThinkingMarkup();
+      return true;
+    }
+
+    /**
+     * Adds or removes the pending assistant row in place.
+     */
+    private syncThinkingMarkup(): void {
+      if (!this.selectedSessionValue || this.isLoading || this.loadError) {
+        this.removeThinkingMarkup();
+        return;
+      }
+
+      const messagesContainer = this.getMessagesContainer();
+
+      if (!messagesContainer) {
+        this.render();
+        return;
+      }
+
+      const existingThinkingRow = this.getThinkingElement();
+
+      if (!this.isSelectedSessionThinking()) {
+        if (existingThinkingRow) {
+          this.removeThinkingMarkup();
+
+          if (this.messages.length === 0) {
+            this.showEmptyConversationMarkup();
+          }
+        }
+
+        return;
+      }
+
+      this.removeEmptyConversationMarkup();
+
+      if (!existingThinkingRow) {
+        messagesContainer.insertAdjacentHTML("beforeend", this.renderThinkingMarkup());
+        this.scrollToBottom();
+      }
+    }
+
+    /**
+     * Returns whether the current DOM can be reconciled for the selected session.
+     */
+    private canReconcileExistingMarkup(): boolean {
+      return Boolean(
+        this.selectedSessionValue
+        && this.renderedSessionId === this.selectedSessionValue.id
+        && this.getMessagesContainer(),
+      );
+    }
+
+    /**
+     * Tracks which message rows are currently rendered.
+     */
+    private syncRenderedMessageFingerprints(): void {
+      this.renderedMessageFingerprints.clear();
+
+      for (const message of this.messages) {
+        this.renderedMessageFingerprints.set(message.id, this.getMessageFingerprint(message));
+      }
+    }
+
+    /**
+     * Builds a compact value for detecting same-id message edits.
+     */
+    private getMessageFingerprint(message: CodexConversationMessage): string {
+      return `${message.role}\n${message.timestamp ?? ""}\n${message.text}`;
+    }
+
+    /**
+     * Finds the transcript container used for incremental message updates.
+     */
+    private getMessagesContainer(): HTMLElement | null {
+      return this.querySelector<HTMLElement>("[data-conversation-messages='true']");
+    }
+
+    /**
+     * Finds one rendered message row by message id.
+     */
+    private getMessageElement(messageId: string): HTMLElement | null {
+      const renderedMessages = this.querySelectorAll<HTMLElement>("[data-conversation-message='true']");
+
+      for (const renderedMessage of renderedMessages) {
+        if (renderedMessage.getAttribute("data-message-id") === messageId) {
+          return renderedMessage;
+        }
+      }
+
+      return null;
+    }
+
+    /**
+     * Finds the pending assistant row.
+     */
+    private getThinkingElement(): HTMLElement | null {
+      return this.querySelector<HTMLElement>("[data-thinking-row='true']");
+    }
+
+    /**
+     * Removes the pending assistant row when it is present.
+     */
+    private removeThinkingMarkup(): void {
+      const thinkingElement = this.getThinkingElement();
+
+      if (thinkingElement?.parentNode) {
+        thinkingElement.parentNode.removeChild(thinkingElement);
+      }
+    }
+
+    /**
+     * Removes the empty transcript placeholder.
+     */
+    private removeEmptyConversationMarkup(): void {
+      const emptyElement = this.querySelector<HTMLElement>("[data-empty-conversation='true']");
+
+      if (emptyElement?.parentNode) {
+        emptyElement.parentNode.removeChild(emptyElement);
+      }
+    }
+
+    /**
+     * Restores the empty transcript placeholder after the thinking row clears.
+     */
+    private showEmptyConversationMarkup(): void {
+      const content = this.querySelector<HTMLElement>(".details-panel__content");
+
+      if (!content || this.querySelector("[data-empty-conversation='true']")) return;
+
+      const messagesContainer = this.getMessagesContainer();
+
+      if (!messagesContainer) return;
+
+      messagesContainer.insertAdjacentHTML(
+        "beforebegin",
+        `<div class="details-panel__muted" data-empty-conversation="true" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>`,
+      );
     }
 
     /**
@@ -419,7 +691,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private scrollToBottom(): void {
       const lastMessage = [...this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")].at(-1);
+      const thinkingElement = this.getThinkingElement();
       const content = this.querySelector<HTMLElement>(".details-panel__content");
+
+      if (thinkingElement) {
+        thinkingElement.scrollIntoView({ block: "end" });
+        return;
+      }
 
       if (lastMessage) {
         lastMessage.scrollIntoView({ block: "end" });
