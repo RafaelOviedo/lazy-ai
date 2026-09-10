@@ -29,6 +29,7 @@ export type SessionsPanelElement = HTMLElement & {
   setSessionDeleting(sessionId: string | null): void;
   setSessionResumeFailed(sessionId: string | null): void;
   setSessionResuming(sessionId: string | null): void;
+  setSessionInterrupted(sessionId: string | null): void;
   setSessionThinking(sessionId: string | null): void;
   repository: CodexSessionReader;
   readonly selectedSession: CodexSessionSummary | null;

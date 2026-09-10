@@ -50,7 +50,7 @@ export type CodexAppServerStartResult = {
 };
 
 export type CodexAppServerTurnStartResult = {
-  turnId?: string;
+  turnId: string;
 };
 
 export type CodexAppServerTurnCompletionResult = {
@@ -172,9 +172,24 @@ export class CodexAppServerClient {
       cwd,
     });
 
+    const turnId = result.turn?.id;
+
+    if (!turnId) {
+      throw new Error("Codex app-server did not return a turn id.");
+    }
+
     return {
-      turnId: result.turn?.id,
+      turnId,
     };
+  }
+
+  async interruptTurn(threadId: string, turnId: string): Promise<void> {
+    await this.initialize();
+
+    await this.request<Record<string, never>>("turn/interrupt", {
+      threadId,
+      turnId,
+    });
   }
 
   async waitForTurnCompletion(threadId: string, turnId?: string, timeoutMs = 300000): Promise<CodexAppServerTurnCompletionResult> {

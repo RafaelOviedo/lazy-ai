@@ -1,5 +1,6 @@
 export enum Keybindings {
   H = "h",
+  I = "i",
   L = "l",
   J = "j",
   K = "k",

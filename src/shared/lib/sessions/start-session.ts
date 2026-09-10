@@ -1,6 +1,7 @@
 type SessionStartClient = {
   startThread(cwd?: string): Promise<{ sessionId: string; threadId: string }>;
-  startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId?: string }>;
+  startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string }>;
+  interruptTurn(threadId: string, turnId: string): Promise<void>;
   waitForTurnCompletion(threadId: string, turnId?: string): Promise<{ errorMessage?: string; status: string }>;
 };
 
@@ -12,8 +13,10 @@ type SessionStartControllerOptions = {
   client: SessionStartClient;
   getSession(sessionId: string): StartedSession | null;
   setActiveSession(sessionId: string, threadId: string): void;
+  setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
   setLoadError(error: string | null): void;
+  setSessionInterrupted(sessionId: string | null): void;
   setSessionThinking(sessionId: string | null): void;
   syncConversation(sessionId: string): Promise<void>;
   syncSession(sessionId: string): Promise<StartedSession | null>;
@@ -22,8 +25,17 @@ type SessionStartControllerOptions = {
 
 export type SessionStartController = {
   dispose(): void;
+  hasActiveTurn(): boolean;
+  interruptActiveTurn(): Promise<boolean>;
   isSessionStarting(): boolean;
   startSession(prompt: string, projectPath: string): Promise<void>;
+};
+
+type ActiveSessionTurn = {
+  isInterrupting: boolean;
+  requestVersion: number;
+  threadId: string;
+  turnId: string;
 };
 
 const sessionReloadAttempts = 20;
@@ -39,6 +51,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
   let isConversationPollInFlight = false;
   let conversationPollTimer: ReturnType<typeof setInterval> | null = null;
   let startRequestVersion = 0;
+  let activeTurn: ActiveSessionTurn | null = null;
 
   async function startSession(prompt: string, projectPath: string): Promise<void> {
     const trimmedPrompt = prompt.trim();
@@ -49,6 +62,8 @@ export function createSessionStartController(options: SessionStartControllerOpti
     startRequestVersion = currentStartRequestVersion;
     isStarting = true;
     options.setLoadError(null);
+    options.setSessionInterrupted(null);
+    options.setDetailsInterruptedSessionId(null);
     options.syncStatusPanel();
 
     try {
@@ -59,6 +74,13 @@ export function createSessionStartController(options: SessionStartControllerOpti
       const startedTurn = await options.client.startTurn(startedThread.threadId, trimmedPrompt, projectPath);
 
       if (currentStartRequestVersion !== startRequestVersion) return;
+
+      activeTurn = {
+        isInterrupting: false,
+        requestVersion: currentStartRequestVersion,
+        threadId: startedThread.threadId,
+        turnId: startedTurn.turnId,
+      };
 
       await syncSessionUntilReady(startedThread.sessionId, currentStartRequestVersion);
 
@@ -75,6 +97,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       stopConversationPolling();
+      clearActiveTurn(currentStartRequestVersion);
 
       if (completion.status === "failed") {
         options.setLoadError(completion.errorMessage ?? "Codex session failed while generating a response.");
@@ -92,19 +115,58 @@ export function createSessionStartController(options: SessionStartControllerOpti
 
       options.setDetailsThinkingSessionId(null);
       options.setActiveSession(startedThread.sessionId, startedThread.threadId);
+      if (completion.status === "interrupted") {
+        options.setSessionInterrupted(startedThread.sessionId);
+        options.setDetailsInterruptedSessionId(startedThread.sessionId);
+      }
       options.syncStatusPanel();
     } catch (error) {
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       stopConversationPolling();
+      clearActiveTurn(currentStartRequestVersion);
       options.setLoadError(formatStartSessionError(error));
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
+      options.setSessionInterrupted(null);
+      options.setDetailsInterruptedSessionId(null);
       options.syncStatusPanel();
     } finally {
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       isStarting = false;
+    }
+  }
+
+  async function interruptActiveTurn(): Promise<boolean> {
+    const turn = activeTurn;
+
+    if (!turn || turn.requestVersion !== startRequestVersion) return false;
+    if (turn.isInterrupting) return true;
+
+    turn.isInterrupting = true;
+
+    try {
+      await options.client.interruptTurn(turn.threadId, turn.turnId);
+      return true;
+    } catch {
+      if (turn.requestVersion === startRequestVersion) {
+        turn.isInterrupting = false;
+        options.setLoadError("Failed to interrupt Codex session.");
+        options.syncStatusPanel();
+      }
+
+      return false;
+    }
+  }
+
+  function hasActiveTurn(): boolean {
+    return activeTurn?.requestVersion === startRequestVersion;
+  }
+
+  function clearActiveTurn(requestVersion: number): void {
+    if (activeTurn?.requestVersion === requestVersion) {
+      activeTurn = null;
     }
   }
 
@@ -167,10 +229,15 @@ export function createSessionStartController(options: SessionStartControllerOpti
     dispose(): void {
       startRequestVersion += 1;
       isStarting = false;
+      activeTurn = null;
       stopConversationPolling();
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
+      options.setSessionInterrupted(null);
+      options.setDetailsInterruptedSessionId(null);
     },
+    hasActiveTurn,
+    interruptActiveTurn,
     isSessionStarting(): boolean {
       return isStarting;
     },

@@ -100,6 +100,15 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
             padding: 1px;
           }
 
+
+          .keybindings-panel__moves {
+            border-bottom: 1px solid #fff;
+          }
+          .keybindings-panel__actions {
+            margin-top: 1px;
+            border-bottom: 1px solid #fff;
+          }
+
           .help-info-modal__row {
             display: flex;
             justify-content: space-between;
@@ -118,13 +127,17 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
 
         <legend>${escapeHtml(title)}</legend>
         <div class="help-info-modal__content">
+          <span class="keybindings-panel__moves">Moves</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">h</span> Previous panel</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">l</span> Next panel</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">j</span> Next item</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">k</span> Previous item</span>
+
+          <span class="keybindings-panel__actions">Actions</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">Space</span> Resume session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">n</span> New session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">p</span> Prompt session</span>
+          <span class="keybindings-panel__key"><span style="color: #fff;">i</span> Interrupt response</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">d</span> Delete session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">q</span> Quit</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">?</span> Help</span>

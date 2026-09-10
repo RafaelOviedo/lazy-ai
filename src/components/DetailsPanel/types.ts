@@ -6,6 +6,7 @@ import type { PendingSessionPrompt } from "../../shared/lib/sessions";
 export type TermWindow = TermDOM["window"];
 
 export type DetailsPanelElement = HTMLElement & {
+  interruptedSessionId: string | null;
   readonly isConversationLoading: boolean;
   pendingUserPrompt: PendingSessionPrompt | null;
   repository: CodexSessionReader;

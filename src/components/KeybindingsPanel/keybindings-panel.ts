@@ -51,6 +51,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
             <span class="keybindings-panel__key">Resume session: Space</span> <span>|</span>
             <span class="keybindings-panel__key">New session: n</span> <span>|</span>
             <span class="keybindings-panel__key">Prompt session: p</span> <span>|</span>
+            <span class="keybindings-panel__key">Interrupt: i</span> <span>|</span>
             <span class="keybindings-panel__key">Delete session: d</span> <span>|</span>
             <span class="keybindings-panel__key">Quit: q</span> <span>|</span>
             <span class="keybindings-panel__key">Help: ?</span>

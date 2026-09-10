@@ -37,6 +37,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private resumingSessionIdValue: string | null = null;
     private deletingSessionIdValue: string | null = null;
     private thinkingSessionIdValue: string | null = null;
+    private interruptedSessionIdValue: string | null = null;
     private alreadyRunningSessionIdValue: string | null = null;
     private resumeFailedSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
@@ -201,6 +202,22 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.updateSessionStatusMarkup(previousThinkingSessionId);
       this.updateSessionStatusMarkup(sessionId);
       this.syncThinkingSpinnerAnimation();
+    }
+
+    /**
+     * Updates the session id currently shown as interrupted.
+     */
+    setSessionInterrupted(sessionId: string | null): void {
+      if (this.interruptedSessionIdValue === sessionId) return;
+
+      const previousInterruptedSessionId = this.interruptedSessionIdValue;
+
+      this.interruptedSessionIdValue = sessionId;
+
+      if (!this.isConnected) return;
+
+      this.updateSessionStatusMarkup(previousInterruptedSessionId);
+      this.updateSessionStatusMarkup(sessionId);
     }
 
     /**
@@ -417,6 +434,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
           .sessions-panel__status-thinking {
             color: #d7ba7d;
+          }
+
+          .sessions-panel__status-interrupted {
+            color: #B81D1D;
           }
 
           .sessions-panel__status-already-running {
@@ -954,6 +975,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (session.id === this.thinkingSessionIdValue) {
         return { className: "sessions-panel__status-thinking", text: "Thinking..." };
+      }
+
+      if (session.id === this.interruptedSessionIdValue) {
+        return { className: "sessions-panel__status-interrupted", text: "Interrupted" };
       }
 
       if (session.id === this.activeSessionIdValue) {

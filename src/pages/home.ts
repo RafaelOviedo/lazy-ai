@@ -136,6 +136,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionResumeController = createSessionResumeController({
     client: appServerClient,
     setActiveSessionId: (sessionId) => {
+      setInterruptedSession(null);
       if (sessionsPanel) {
         sessionsPanel.activeSessionId = sessionId;
       }
@@ -164,6 +165,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     client: appServerClient,
     getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
     setActiveSession: (sessionId, threadId) => sessionResumeController.markSessionActive(sessionId, threadId),
+    setDetailsInterruptedSessionId: (sessionId) => {
+      if (detailsPanel) {
+        detailsPanel.interruptedSessionId = sessionId;
+      }
+    },
     setDetailsThinkingSessionId: (sessionId) => {
       if (detailsPanel) {
         detailsPanel.thinkingSessionId = sessionId;
@@ -172,6 +178,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     setLoadError: (error) => {
       loadError = error;
     },
+    setSessionInterrupted: (sessionId) => sessionsPanel?.setSessionInterrupted(sessionId),
     setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
     syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
@@ -185,6 +192,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         detailsPanel.pendingUserPrompt = prompt;
       }
     },
+    setDetailsInterruptedSessionId: (sessionId) => {
+      if (detailsPanel) {
+        detailsPanel.interruptedSessionId = sessionId;
+      }
+    },
     setDetailsThinkingSessionId: (sessionId) => {
       if (detailsPanel) {
         detailsPanel.thinkingSessionId = sessionId;
@@ -193,6 +205,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     setLoadError: (error) => {
       loadError = error;
     },
+    setSessionInterrupted: (sessionId) => sessionsPanel?.setSessionInterrupted(sessionId),
     setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
     syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
@@ -233,6 +246,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     contextPanel.projectName = selectedProjectName;
     contextPanel.projectPath = selectedProjectPath;
     contextPanel.selectedSession = selectedSession;
+  }
+
+  function setInterruptedSession(sessionId: string | null) {
+    sessionsPanel?.setSessionInterrupted(sessionId);
+    if (detailsPanel) {
+      detailsPanel.interruptedSessionId = sessionId;
+    }
   }
 
   function onProjectChange(event: Event) {
@@ -363,6 +383,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     if (getModalConfig().isActive) return;
     if (handleModalShortcuts(event, key)) return;
+    if (handleInterruptSessionShortcut(event, key)) return;
     if (handleNewSessionShortcut(event, key)) return;
     if (handlePromptSessionShortcut(event, key)) return;
     if (handleQuitShortcut(event, key)) return;
@@ -375,6 +396,24 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     event.preventDefault();
     openModal(ModalName.helpInfoModal);
     return true;
+  }
+
+  function handleInterruptSessionShortcut(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.I) return false;
+
+    if (sessionPromptController.hasActiveTurn()) {
+      event.preventDefault();
+      void sessionPromptController.interruptActiveTurn();
+      return true;
+    }
+
+    if (sessionStartController.hasActiveTurn()) {
+      event.preventDefault();
+      void sessionStartController.interruptActiveTurn();
+      return true;
+    }
+
+    return false;
   }
 
   function handleNewSessionShortcut(event: KeyboardEvent, key: string): boolean {

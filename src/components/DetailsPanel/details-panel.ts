@@ -26,6 +26,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private pendingUserPromptValue: PendingSessionPrompt | null = null;
     private pendingUserPromptInitialMatchCount = 0;
     private thinkingSessionIdValue: string | null = null;
+    private interruptedSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private messages: CodexConversationMessage[] = [];
     private isLoading = false;
@@ -161,6 +162,26 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Updates the session currently showing an interrupted response marker.
+     */
+    set interruptedSessionId(value: string | null) {
+      if (this.interruptedSessionIdValue === value) return;
+
+      this.interruptedSessionIdValue = value;
+
+      if (this.isConnected) {
+        this.syncInterruptedMarkup();
+      }
+    }
+
+    /**
+     * Returns the session currently showing an interrupted response marker.
+     */
+    get interruptedSessionId(): string | null {
+      return this.interruptedSessionIdValue;
+    }
+
+    /**
      * Indicates whether a conversation load is pending or in progress.
      */
     get isConversationLoading(): boolean {
@@ -260,6 +281,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
           .details-panel__thinking {
             color: #d7ba7d;
+            padding: 1px;
+          }
+
+          .details-panel__interrupted {
+            color: #B81D1D;
             padding: 1px;
           }
 
@@ -406,12 +432,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (this.messages.length === 0) {
         return `
           <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
-          ${this.isSelectedSessionPendingPrompt() || this.isSelectedSessionThinking()
+          ${this.isSelectedSessionPendingPrompt() || this.isSelectedSessionThinking() || this.isSelectedSessionInterrupted()
             ? ""
             : `<div class="details-panel__muted" data-empty-conversation="true" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>`}
           <div data-conversation-messages="true">
             ${this.isSelectedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
             ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
+            ${this.isSelectedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
           </div>
         `;
       }
@@ -422,6 +449,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           ${this.messages.map((message) => this.renderMessageMarkup(message)).join("")}
           ${this.isSelectedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
           ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
+          ${this.isSelectedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
         </div>
       `;
     }
@@ -431,6 +459,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private isSelectedSessionThinking(): boolean {
       return this.selectedSessionValue?.id === this.thinkingSessionIdValue;
+    }
+
+    /**
+     * Returns whether the selected session recently had its response interrupted.
+     */
+    private isSelectedSessionInterrupted(): boolean {
+      return this.selectedSessionValue?.id === this.interruptedSessionIdValue && !this.isSelectedSessionThinking();
     }
 
     /**
@@ -461,6 +496,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private renderThinkingMarkup(): string {
       return `<div class="details-panel__thinking" data-thinking-row="true"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> Thinking...</div>`;
+    }
+
+    /**
+     * Builds the interrupted assistant response row.
+     */
+    private renderInterruptedMarkup(): string {
+      return `<div class="details-panel__interrupted" data-interrupted-row="true">Interrupted</div>`;
     }
 
     /**
@@ -594,6 +636,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.syncTitleMarkup();
       this.removeThinkingMarkup();
       this.removePendingUserPromptMarkup();
+      this.removeInterruptedMarkup();
 
       if (this.shouldClearPendingUserPrompt(messages)) {
         this.pendingUserPromptValue = null;
@@ -620,6 +663,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       this.syncPendingUserPromptMarkup();
       this.syncThinkingMarkup();
+      this.syncInterruptedMarkup();
       return true;
     }
 
@@ -644,7 +688,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (!this.isSelectedSessionPendingPrompt()) {
         this.removePendingUserPromptMarkup();
 
-        if (this.messages.length === 0 && !this.isSelectedSessionThinking()) {
+        if (this.messages.length === 0 && !this.isSelectedSessionThinking() && !this.isSelectedSessionInterrupted()) {
           this.showEmptyConversationMarkup();
         }
 
@@ -695,7 +739,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         if (existingThinkingRow) {
           this.removeThinkingMarkup();
 
-          if (this.messages.length === 0 && !this.isSelectedSessionPendingPrompt()) {
+          if (this.messages.length === 0 && !this.isSelectedSessionPendingPrompt() && !this.isSelectedSessionInterrupted()) {
             this.showEmptyConversationMarkup();
           }
         }
@@ -712,6 +756,44 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       }
 
       this.syncThinkingSpinnerAnimation();
+    }
+
+    /**
+     * Adds or removes the interrupted assistant row in place.
+     */
+    private syncInterruptedMarkup(): void {
+      if (!this.selectedSessionValue || this.isLoading || this.loadError) {
+        this.removeInterruptedMarkup();
+        return;
+      }
+
+      const messagesContainer = this.getMessagesContainer();
+
+      if (!messagesContainer) {
+        this.render();
+        return;
+      }
+
+      const existingInterruptedRow = this.getInterruptedElement();
+
+      if (!this.isSelectedSessionInterrupted()) {
+        if (existingInterruptedRow) {
+          this.removeInterruptedMarkup();
+
+          if (this.messages.length === 0 && !this.isSelectedSessionPendingPrompt() && !this.isSelectedSessionThinking()) {
+            this.showEmptyConversationMarkup();
+          }
+        }
+
+        return;
+      }
+
+      this.removeEmptyConversationMarkup();
+
+      if (!existingInterruptedRow) {
+        messagesContainer.insertAdjacentHTML("beforeend", this.renderInterruptedMarkup());
+        this.scrollToBottom();
+      }
     }
 
     /**
@@ -824,6 +906,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Finds the interrupted assistant row.
+     */
+    private getInterruptedElement(): HTMLElement | null {
+      return this.querySelector<HTMLElement>("[data-interrupted-row='true']");
+    }
+
+    /**
      * Finds the optimistic user prompt row.
      */
     private getPendingUserPromptElement(): HTMLElement | null {
@@ -841,6 +930,17 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       }
 
       this.syncThinkingSpinnerAnimation();
+    }
+
+    /**
+     * Removes the interrupted assistant row when it is present.
+     */
+    private removeInterruptedMarkup(): void {
+      const interruptedElement = this.getInterruptedElement();
+
+      if (interruptedElement?.parentNode) {
+        interruptedElement.parentNode.removeChild(interruptedElement);
+      }
     }
 
     /**
@@ -966,10 +1066,16 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       const lastMessage = [...this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")].at(-1);
       const pendingUserPrompt = this.getPendingUserPromptElement();
       const thinkingElement = this.getThinkingElement();
+      const interruptedElement = this.getInterruptedElement();
       const content = this.querySelector<HTMLElement>(".details-panel__content");
 
       if (thinkingElement) {
         thinkingElement.scrollIntoView({ block: "end" });
+        return;
+      }
+
+      if (interruptedElement) {
+        interruptedElement.scrollIntoView({ block: "end" });
         return;
       }
 
