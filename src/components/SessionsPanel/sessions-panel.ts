@@ -17,6 +17,8 @@ const maxSessionTitleLength = 40;
 const sessionsPanelViewportRatio = 0.3 * 0.98;
 const sessionRowPaddingWidth = 3;
 const sessionPanelBorderWidth = 2;
+const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const thinkingSpinnerIntervalMs = 80;
 
 /**
  * Registers the Sessions panel custom element against a TermDOM window.
@@ -42,6 +44,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private selectedSessionIndex = 0;
     private isLoading = true;
     private loadError: string | null = null;
+    private thinkingSpinnerFrame = 0;
+    private thinkingSpinnerTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor() {
       super();
@@ -78,6 +82,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.removeEventListener("blur", this.onBlur);
       this.removeEventListener("keydown", this.onKeyDown);
       window.removeEventListener("resize", this.onResize);
+      this.stopThinkingSpinner();
     }
 
     /**
@@ -195,6 +200,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       this.updateSessionStatusMarkup(previousThinkingSessionId);
       this.updateSessionStatusMarkup(sessionId);
+      this.syncThinkingSpinnerAnimation();
     }
 
     /**
@@ -435,6 +441,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           ${this.renderContentMarkup()}
         </div>
       `;
+      this.syncThinkingSpinnerAnimation();
     }
 
     /**
@@ -534,10 +541,55 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       if (!status || index === -1) return;
 
       status.innerHTML = this.renderSessionStatusMarkup(this.sessions[index]);
+      this.syncThinkingSpinnerAnimation();
 
       if (title) {
         title.textContent = this.truncateSessionTitle(this.sessions[index]);
       }
+    }
+
+    /**
+     * Starts or stops the spinner loop based on rendered thinking statuses.
+     */
+    private syncThinkingSpinnerAnimation(): void {
+      if (!this.isConnected || !this.querySelector("[data-thinking-spinner='true']")) {
+        this.stopThinkingSpinner();
+        return;
+      }
+
+      if (this.thinkingSpinnerTimer) return;
+
+      this.updateThinkingSpinnerMarkup();
+      this.thinkingSpinnerTimer = setInterval(() => this.updateThinkingSpinnerMarkup(), thinkingSpinnerIntervalMs);
+    }
+
+    /**
+     * Advances rendered thinking spinner frames.
+     */
+    private updateThinkingSpinnerMarkup(): void {
+      const spinners = this.querySelectorAll<HTMLElement>("[data-thinking-spinner='true']");
+
+      if (spinners.length === 0) {
+        this.stopThinkingSpinner();
+        return;
+      }
+
+      const spinnerFrame = thinkingSpinnerFrames[this.thinkingSpinnerFrame % thinkingSpinnerFrames.length];
+
+      spinners.forEach((spinner) => {
+        spinner.textContent = spinnerFrame;
+      });
+      this.thinkingSpinnerFrame += 1;
+    }
+
+    /**
+     * Stops the thinking spinner loop.
+     */
+    private stopThinkingSpinner(): void {
+      if (!this.thinkingSpinnerTimer) return;
+
+      clearInterval(this.thinkingSpinnerTimer);
+      this.thinkingSpinnerTimer = null;
     }
 
     /**
@@ -867,9 +919,20 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       const status = this.resolveSessionStatus(session);
       const statusText = escapeHtml(status.text);
 
+      if (session.id === this.thinkingSessionIdValue) {
+        return `<span class="sessions-panel__status-thinking"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> ${statusText}</span>`;
+      }
+
       return status.className
         ? `<span class="${status.className}">${statusText}</span>`
         : statusText;
+    }
+
+    /**
+     * Returns the current spinner frame without advancing the animation.
+     */
+    private getThinkingSpinnerFrame(): string {
+      return thinkingSpinnerFrames[this.thinkingSpinnerFrame % thinkingSpinnerFrames.length];
     }
 
     private resolveSessionStatus(session: CodexSessionSummary): SessionStatusPresentation {
