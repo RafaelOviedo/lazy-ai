@@ -15,6 +15,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
   }
 
   const conversationLoadDelayMs = 300;
+  const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  const thinkingSpinnerIntervalMs = 80;
 
   /**
    * Renders selected-session detail content.
@@ -32,6 +34,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private loadTimer: ReturnType<typeof setTimeout> | null = null;
     private renderedMessageFingerprints = new Map<string, string>();
     private renderedSessionId: string | null = null;
+    private thinkingSpinnerFrame = 0;
+    private thinkingSpinnerTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor() {
       super();
@@ -64,6 +68,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       }
 
       this.removeEventListener("keydown", this.onKeyDown);
+      this.stopThinkingSpinner();
     }
 
     /**
@@ -160,6 +165,45 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     get isConversationLoading(): boolean {
       return this.isLoading || this.loadTimer !== null;
+    }
+
+    /**
+     * Refreshes the selected transcript in place without showing the loading state.
+     */
+    async syncConversation(sessionId: string): Promise<void> {
+      if (!this.isConnected || this.selectedSessionValue?.id !== sessionId) return;
+
+      const loadVersion = ++this.loadVersion;
+
+      if (this.loadTimer) {
+        clearTimeout(this.loadTimer);
+        this.loadTimer = null;
+      }
+
+      try {
+        const conversation = await this.sessionReader.getConversation(sessionId);
+
+        if (loadVersion !== this.loadVersion || this.selectedSessionValue?.id !== sessionId) return;
+
+        this.messages = conversation.messages;
+        this.isLoading = false;
+        this.loadError = null;
+
+        if (this.canReconcileExistingMarkup() && this.syncConversationMarkup(conversation.messages)) {
+          this.scrollToBottom();
+          return;
+        }
+
+        this.render();
+        this.scrollToBottom();
+      } catch {
+        if (loadVersion !== this.loadVersion) return;
+
+        if (this.selectedSessionValue?.id === sessionId && this.isLoading) {
+          this.isLoading = false;
+          this.render();
+        }
+      }
     }
 
     /**
@@ -332,6 +376,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       this.renderedSessionId = this.selectedSessionValue?.id ?? null;
       this.syncRenderedMessageFingerprints();
+      this.syncThinkingSpinnerAnimation();
     }
 
     /**
@@ -415,7 +460,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Builds the pending assistant response row.
      */
     private renderThinkingMarkup(): string {
-      return `<div class="details-panel__thinking" data-thinking-row="true">Thinking...</div>`;
+      return `<div class="details-panel__thinking" data-thinking-row="true"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> Thinking...</div>`;
     }
 
     /**
@@ -633,6 +678,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private syncThinkingMarkup(): void {
       if (!this.selectedSessionValue || this.isLoading || this.loadError) {
         this.removeThinkingMarkup();
+        this.syncThinkingSpinnerAnimation();
         return;
       }
 
@@ -654,6 +700,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
         }
 
+        this.syncThinkingSpinnerAnimation();
         return;
       }
 
@@ -663,6 +710,59 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         messagesContainer.insertAdjacentHTML("beforeend", this.renderThinkingMarkup());
         this.scrollToBottom();
       }
+
+      this.syncThinkingSpinnerAnimation();
+    }
+
+    /**
+     * Starts or stops the spinner loop based on the rendered thinking row.
+     */
+    private syncThinkingSpinnerAnimation(): void {
+      if (!this.isConnected || !this.querySelector("[data-thinking-spinner='true']")) {
+        this.stopThinkingSpinner();
+        return;
+      }
+
+      if (this.thinkingSpinnerTimer) return;
+
+      this.updateThinkingSpinnerMarkup();
+      this.thinkingSpinnerTimer = setInterval(() => this.updateThinkingSpinnerMarkup(), thinkingSpinnerIntervalMs);
+    }
+
+    /**
+     * Advances rendered thinking spinner frames.
+     */
+    private updateThinkingSpinnerMarkup(): void {
+      const spinners = this.querySelectorAll<HTMLElement>("[data-thinking-spinner='true']");
+
+      if (spinners.length === 0) {
+        this.stopThinkingSpinner();
+        return;
+      }
+
+      const spinnerFrame = thinkingSpinnerFrames[this.thinkingSpinnerFrame % thinkingSpinnerFrames.length];
+
+      spinners.forEach((spinner) => {
+        spinner.textContent = spinnerFrame;
+      });
+      this.thinkingSpinnerFrame += 1;
+    }
+
+    /**
+     * Stops the thinking spinner loop.
+     */
+    private stopThinkingSpinner(): void {
+      if (!this.thinkingSpinnerTimer) return;
+
+      clearInterval(this.thinkingSpinnerTimer);
+      this.thinkingSpinnerTimer = null;
+    }
+
+    /**
+     * Returns the current spinner frame without advancing the animation.
+     */
+    private getThinkingSpinnerFrame(): string {
+      return thinkingSpinnerFrames[this.thinkingSpinnerFrame % thinkingSpinnerFrames.length];
     }
 
     /**
@@ -739,6 +839,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (thinkingElement?.parentNode) {
         thinkingElement.parentNode.removeChild(thinkingElement);
       }
+
+      this.syncThinkingSpinnerAnimation();
     }
 
     /**

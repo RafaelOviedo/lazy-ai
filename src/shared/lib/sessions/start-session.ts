@@ -11,11 +11,11 @@ type StartedSession = {
 type SessionStartControllerOptions = {
   client: SessionStartClient;
   getSession(sessionId: string): StartedSession | null;
-  setActivityStatus(status: string | null): void;
   setActiveSession(sessionId: string, threadId: string): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
   setLoadError(error: string | null): void;
   setSessionThinking(sessionId: string | null): void;
+  syncConversation(sessionId: string): Promise<void>;
   syncSession(sessionId: string): Promise<StartedSession | null>;
   syncStatusPanel(): void;
 };
@@ -28,6 +28,7 @@ export type SessionStartController = {
 
 const sessionReloadAttempts = 20;
 const sessionReloadRetryDelayMs = 250;
+const conversationPollIntervalMs = 1000;
 const untitledSessionTitle = "Untitled session";
 
 /**
@@ -35,6 +36,8 @@ const untitledSessionTitle = "Untitled session";
  */
 export function createSessionStartController(options: SessionStartControllerOptions): SessionStartController {
   let isStarting = false;
+  let isConversationPollInFlight = false;
+  let conversationPollTimer: ReturnType<typeof setInterval> | null = null;
   let startRequestVersion = 0;
 
   async function startSession(prompt: string, projectPath: string): Promise<void> {
@@ -64,12 +67,14 @@ export function createSessionStartController(options: SessionStartControllerOpti
       options.setActiveSession(startedThread.sessionId, startedThread.threadId);
       options.setSessionThinking(startedThread.sessionId);
       options.setDetailsThinkingSessionId(startedThread.sessionId);
-      options.setActivityStatus("Thinking...");
       options.syncStatusPanel();
+      startConversationPolling(startedThread.sessionId, currentStartRequestVersion);
 
       const completion = await options.client.waitForTurnCompletion(startedThread.threadId, startedTurn.turnId);
 
       if (currentStartRequestVersion !== startRequestVersion) return;
+
+      stopConversationPolling();
 
       if (completion.status === "failed") {
         options.setLoadError(completion.errorMessage ?? "Codex session failed while generating a response.");
@@ -79,9 +84,9 @@ export function createSessionStartController(options: SessionStartControllerOpti
         options.setLoadError("Codex session was interrupted before the response completed.");
       }
 
-      options.setActivityStatus(null);
       options.setSessionThinking(null);
       await syncSessionUntilReady(startedThread.sessionId, currentStartRequestVersion);
+      await options.syncConversation(startedThread.sessionId);
 
       if (currentStartRequestVersion !== startRequestVersion) return;
 
@@ -91,16 +96,40 @@ export function createSessionStartController(options: SessionStartControllerOpti
     } catch (error) {
       if (currentStartRequestVersion !== startRequestVersion) return;
 
+      stopConversationPolling();
       options.setLoadError(formatStartSessionError(error));
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
-      options.setActivityStatus(null);
       options.syncStatusPanel();
     } finally {
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       isStarting = false;
     }
+  }
+
+  function startConversationPolling(sessionId: string, requestVersion: number): void {
+    stopConversationPolling();
+    pollConversation(sessionId, requestVersion);
+    conversationPollTimer = setInterval(() => pollConversation(sessionId, requestVersion), conversationPollIntervalMs);
+  }
+
+  function stopConversationPolling(): void {
+    if (conversationPollTimer) {
+      clearInterval(conversationPollTimer);
+      conversationPollTimer = null;
+    }
+  }
+
+  function pollConversation(sessionId: string, requestVersion: number): void {
+    if (requestVersion !== startRequestVersion || isConversationPollInFlight) return;
+
+    isConversationPollInFlight = true;
+
+    void options.syncConversation(sessionId)
+      .finally(() => {
+        isConversationPollInFlight = false;
+      });
   }
 
   async function syncSessionUntilReady(sessionId: string, requestVersion: number): Promise<void> {
@@ -138,9 +167,9 @@ export function createSessionStartController(options: SessionStartControllerOpti
     dispose(): void {
       startRequestVersion += 1;
       isStarting = false;
+      stopConversationPolling();
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
-      options.setActivityStatus(null);
     },
     isSessionStarting(): boolean {
       return isStarting;

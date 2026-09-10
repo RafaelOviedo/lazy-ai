@@ -121,7 +121,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   let selectedSession: CodexSessionSummary | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
-  let activityStatus: string | null = null;
 
   let loadError: string | null = null;
   let projectLoadError: string | null = null;
@@ -164,9 +163,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionStartController = createSessionStartController({
     client: appServerClient,
     getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
-    setActivityStatus: (status) => {
-      activityStatus = status;
-    },
     setActiveSession: (sessionId, threadId) => sessionResumeController.markSessionActive(sessionId, threadId),
     setDetailsThinkingSessionId: (sessionId) => {
       if (detailsPanel) {
@@ -177,15 +173,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       loadError = error;
     },
     setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
+    syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
     syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
     syncStatusPanel,
   });
 
   const sessionPromptController = createSessionPromptController({
     client: appServerClient,
-    setActivityStatus: (status) => {
-      activityStatus = status;
-    },
     setDetailsPendingUserPrompt: (prompt) => {
       if (detailsPanel) {
         detailsPanel.pendingUserPrompt = prompt;
@@ -200,6 +194,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       loadError = error;
     },
     setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
+    syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
     syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
     syncStatusPanel,
   });
@@ -226,7 +221,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function syncStatusPanel() {
     if (!statusPanel) return;
 
-    statusPanel.activityStatus = activityStatus;
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;

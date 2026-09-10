@@ -10,5 +10,6 @@ export type DetailsPanelElement = HTMLElement & {
   pendingUserPrompt: PendingSessionPrompt | null;
   repository: CodexSessionReader;
   selectedSession: CodexSessionSummary | null;
+  syncConversation(sessionId: string): Promise<void>;
   thinkingSessionId: string | null;
 };

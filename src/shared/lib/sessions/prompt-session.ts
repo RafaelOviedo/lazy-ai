@@ -7,11 +7,11 @@ type SessionPromptClient = {
 
 type SessionPromptControllerOptions = {
   client: SessionPromptClient;
-  setActivityStatus(status: string | null): void;
   setDetailsPendingUserPrompt(prompt: PendingSessionPrompt | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
   setLoadError(error: string | null): void;
   setSessionThinking(sessionId: string | null): void;
+  syncConversation(sessionId: string): Promise<void>;
   syncSession(sessionId: string): Promise<CodexSessionSummary | null>;
   syncStatusPanel(): void;
 };
@@ -28,11 +28,15 @@ export type SessionPromptController = {
   promptSession(prompt: string, session: CodexSessionSummary, threadId: string, projectPath: string): Promise<void>;
 };
 
+const conversationPollIntervalMs = 1000;
+
 /**
  * Coordinates follow-up prompts sent to an already running session.
  */
 export function createSessionPromptController(options: SessionPromptControllerOptions): SessionPromptController {
   let isPrompting = false;
+  let isConversationPollInFlight = false;
+  let conversationPollTimer: ReturnType<typeof setInterval> | null = null;
   let promptRequestVersion = 0;
 
   async function promptSession(
@@ -57,7 +61,6 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     });
     options.setSessionThinking(session.id);
     options.setDetailsThinkingSessionId(session.id);
-    options.setActivityStatus("Thinking...");
     options.syncStatusPanel();
 
     try {
@@ -65,9 +68,13 @@ export function createSessionPromptController(options: SessionPromptControllerOp
 
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
+      startConversationPolling(session.id, currentPromptRequestVersion);
+
       const completion = await options.client.waitForTurnCompletion(threadId, startedTurn.turnId);
 
       if (currentPromptRequestVersion !== promptRequestVersion) return;
+
+      stopConversationPolling();
 
       if (completion.status === "failed") {
         options.setLoadError(completion.errorMessage ?? "Codex session failed while generating a response.");
@@ -77,9 +84,9 @@ export function createSessionPromptController(options: SessionPromptControllerOp
         options.setLoadError("Codex session was interrupted before the response completed.");
       }
 
-      options.setActivityStatus(null);
       options.setSessionThinking(null);
       await options.syncSession(session.id);
+      await options.syncConversation(session.id);
 
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
@@ -89,17 +96,41 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     } catch (error) {
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
+      stopConversationPolling();
       options.setLoadError(formatPromptSessionError(error));
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
       options.setDetailsPendingUserPrompt(null);
-      options.setActivityStatus(null);
       options.syncStatusPanel();
     } finally {
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
       isPrompting = false;
     }
+  }
+
+  function startConversationPolling(sessionId: string, requestVersion: number): void {
+    stopConversationPolling();
+    pollConversation(sessionId, requestVersion);
+    conversationPollTimer = setInterval(() => pollConversation(sessionId, requestVersion), conversationPollIntervalMs);
+  }
+
+  function stopConversationPolling(): void {
+    if (conversationPollTimer) {
+      clearInterval(conversationPollTimer);
+      conversationPollTimer = null;
+    }
+  }
+
+  function pollConversation(sessionId: string, requestVersion: number): void {
+    if (requestVersion !== promptRequestVersion || isConversationPollInFlight) return;
+
+    isConversationPollInFlight = true;
+
+    void options.syncConversation(sessionId)
+      .finally(() => {
+        isConversationPollInFlight = false;
+      });
   }
 
   function formatPromptSessionError(error: unknown): string {
@@ -114,10 +145,10 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     dispose(): void {
       promptRequestVersion += 1;
       isPrompting = false;
+      stopConversationPolling();
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
       options.setDetailsPendingUserPrompt(null);
-      options.setActivityStatus(null);
     },
     isSessionPrompting(): boolean {
       return isPrompting;
