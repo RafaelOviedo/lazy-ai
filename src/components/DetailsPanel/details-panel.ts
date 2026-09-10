@@ -3,6 +3,7 @@ import { renderMarkdown } from "../../shared/lib/markdown/index.js";
 import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
 
 import type { CodexConversationMessage, CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
+import type { PendingSessionPrompt } from "../../shared/lib/sessions/index.js";
 import type { TermWindow } from "./types.js";
 
 /**
@@ -20,6 +21,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
    */
   class DetailsPanel extends window.HTMLElement {
     private selectedSessionValue: CodexSessionSummary | null = null;
+    private pendingUserPromptValue: PendingSessionPrompt | null = null;
+    private pendingUserPromptInitialMatchCount = 0;
     private thinkingSessionIdValue: string | null = null;
     private sessionReader: CodexSessionReader = new CodexSessionRepository();
     private messages: CodexConversationMessage[] = [];
@@ -102,6 +105,34 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     get selectedSession(): CodexSessionSummary | null {
       return this.selectedSessionValue;
+    }
+
+    /**
+     * Updates the pending user prompt shown before session history has caught up.
+     */
+    set pendingUserPrompt(value: PendingSessionPrompt | null) {
+      if (
+        this.pendingUserPromptValue?.sessionId === value?.sessionId
+        && this.pendingUserPromptValue?.text === value?.text
+      ) {
+        return;
+      }
+
+      this.pendingUserPromptValue = value;
+      this.pendingUserPromptInitialMatchCount = value
+        ? this.countMatchingUserPromptMessages(this.messages, value.text)
+        : 0;
+
+      if (this.isConnected) {
+        this.syncPendingUserPromptMarkup();
+      }
+    }
+
+    /**
+     * Returns the pending prompt rendered optimistically in the details panel.
+     */
+    get pendingUserPrompt(): PendingSessionPrompt | null {
+      return this.pendingUserPromptValue;
     }
 
     /**
@@ -212,6 +243,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
           .details-panel__message-role--assistant {
             color: #43B53E;
+          }
+
+          .details-panel__message--pending {
+            border-top-color: #5fafff;
           }
 
           .details-panel__message-text {
@@ -326,10 +361,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (this.messages.length === 0) {
         return `
           <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
-          ${this.isSelectedSessionThinking()
+          ${this.isSelectedSessionPendingPrompt() || this.isSelectedSessionThinking()
             ? ""
             : `<div class="details-panel__muted" data-empty-conversation="true" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>`}
           <div data-conversation-messages="true">
+            ${this.isSelectedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
             ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
           </div>
         `;
@@ -339,6 +375,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
         <div data-conversation-messages="true">
           ${this.messages.map((message) => this.renderMessageMarkup(message)).join("")}
+          ${this.isSelectedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
           ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
         </div>
       `;
@@ -349,6 +386,29 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private isSelectedSessionThinking(): boolean {
       return this.selectedSessionValue?.id === this.thinkingSessionIdValue;
+    }
+
+    /**
+     * Returns whether the selected session has a prompt waiting for persistence.
+     */
+    private isSelectedSessionPendingPrompt(): boolean {
+      return this.selectedSessionValue?.id === this.pendingUserPromptValue?.sessionId;
+    }
+
+    /**
+     * Builds the optimistic user prompt row.
+     */
+    private renderPendingUserPromptMarkup(): string {
+      if (!this.pendingUserPromptValue) return "";
+
+      return `
+        <div class="details-panel__message details-panel__message--pending" data-pending-user-prompt="true">
+          <div class="details-panel__message-header">
+            <span class="details-panel__message-role details-panel__message-role--user">You</span>
+          </div>
+          <div class="details-panel__message-text">${escapeHtml(this.pendingUserPromptValue.text)}</div>
+        </div>
+      `;
     }
 
     /**
@@ -488,6 +548,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       this.syncTitleMarkup();
       this.removeThinkingMarkup();
+      this.removePendingUserPromptMarkup();
+
+      if (this.shouldClearPendingUserPrompt(messages)) {
+        this.pendingUserPromptValue = null;
+      }
 
       for (const message of messages) {
         const fingerprint = this.getMessageFingerprint(message);
@@ -504,12 +569,62 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         this.renderedMessageFingerprints.set(message.id, fingerprint);
       }
 
-      if (messages.length > 0 || this.isSelectedSessionThinking()) {
+      if (messages.length > 0 || this.isSelectedSessionPendingPrompt() || this.isSelectedSessionThinking()) {
         this.removeEmptyConversationMarkup();
       }
 
+      this.syncPendingUserPromptMarkup();
       this.syncThinkingMarkup();
       return true;
+    }
+
+    /**
+     * Adds or removes the pending user prompt row in place.
+     */
+    private syncPendingUserPromptMarkup(): void {
+      if (!this.selectedSessionValue || this.isLoading || this.loadError) {
+        this.removePendingUserPromptMarkup();
+        return;
+      }
+
+      const messagesContainer = this.getMessagesContainer();
+
+      if (!messagesContainer) {
+        this.render();
+        return;
+      }
+
+      const existingPendingPrompt = this.getPendingUserPromptElement();
+
+      if (!this.isSelectedSessionPendingPrompt()) {
+        this.removePendingUserPromptMarkup();
+
+        if (this.messages.length === 0 && !this.isSelectedSessionThinking()) {
+          this.showEmptyConversationMarkup();
+        }
+
+        return;
+      }
+
+      if (this.shouldClearPendingUserPrompt(this.messages)) {
+        this.pendingUserPromptValue = null;
+        this.removePendingUserPromptMarkup();
+        return;
+      }
+
+      this.removeEmptyConversationMarkup();
+
+      if (!existingPendingPrompt) {
+        const thinkingElement = this.getThinkingElement();
+
+        if (thinkingElement) {
+          thinkingElement.insertAdjacentHTML("beforebegin", this.renderPendingUserPromptMarkup());
+        } else {
+          messagesContainer.insertAdjacentHTML("beforeend", this.renderPendingUserPromptMarkup());
+        }
+
+        this.scrollToBottom();
+      }
     }
 
     /**
@@ -534,7 +649,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         if (existingThinkingRow) {
           this.removeThinkingMarkup();
 
-          if (this.messages.length === 0) {
+          if (this.messages.length === 0 && !this.isSelectedSessionPendingPrompt()) {
             this.showEmptyConversationMarkup();
           }
         }
@@ -609,6 +724,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Finds the optimistic user prompt row.
+     */
+    private getPendingUserPromptElement(): HTMLElement | null {
+      return this.querySelector<HTMLElement>("[data-pending-user-prompt='true']");
+    }
+
+    /**
      * Removes the pending assistant row when it is present.
      */
     private removeThinkingMarkup(): void {
@@ -617,6 +739,55 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (thinkingElement?.parentNode) {
         thinkingElement.parentNode.removeChild(thinkingElement);
       }
+    }
+
+    /**
+     * Removes the optimistic user prompt row when it is present.
+     */
+    private removePendingUserPromptMarkup(): void {
+      const pendingPromptElement = this.getPendingUserPromptElement();
+
+      if (pendingPromptElement?.parentNode) {
+        pendingPromptElement.parentNode.removeChild(pendingPromptElement);
+      }
+    }
+
+    /**
+     * Detects when the persisted transcript has caught up with the optimistic row.
+     */
+    private shouldClearPendingUserPrompt(messages: CodexConversationMessage[]): boolean {
+      const pendingUserPrompt = this.pendingUserPromptValue;
+
+      if (!pendingUserPrompt) return false;
+
+      const matchingMessages = messages.filter((message) => {
+        return message.role === "user" && message.text.trim() === pendingUserPrompt.text;
+      });
+
+      const submittedAt = new Date(pendingUserPrompt.submittedAt).getTime();
+
+      if (!Number.isNaN(submittedAt)) {
+        const hasNewerMatch = matchingMessages.some((message) => {
+          if (!message.timestamp) return false;
+
+          const messageTimestamp = new Date(message.timestamp).getTime();
+
+          return !Number.isNaN(messageTimestamp) && messageTimestamp >= submittedAt - 5000;
+        });
+
+        if (hasNewerMatch) return true;
+      }
+
+      return matchingMessages.length > this.pendingUserPromptInitialMatchCount;
+    }
+
+    /**
+     * Counts persisted user messages with the same text as the optimistic prompt.
+     */
+    private countMatchingUserPromptMessages(messages: CodexConversationMessage[], promptText: string): number {
+      return messages.filter((message) => {
+        return message.role === "user" && message.text.trim() === promptText;
+      }).length;
     }
 
     /**
@@ -691,11 +862,17 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private scrollToBottom(): void {
       const lastMessage = [...this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")].at(-1);
+      const pendingUserPrompt = this.getPendingUserPromptElement();
       const thinkingElement = this.getThinkingElement();
       const content = this.querySelector<HTMLElement>(".details-panel__content");
 
       if (thinkingElement) {
         thinkingElement.scrollIntoView({ block: "end" });
+        return;
+      }
+
+      if (pendingUserPrompt) {
+        pendingUserPrompt.scrollIntoView({ block: "end" });
         return;
       }
 

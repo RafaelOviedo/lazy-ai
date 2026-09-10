@@ -47,10 +47,10 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
         <div style="display: flex; gap: 1px;">
           <span>Keybindings:</span>
           <div>
-            <span class="keybindings-panel__key">Move panels: h/l ↑ ↓</span> <span>|</span>
-            <span class="keybindings-panel__key">Move items: j/k ↑ ↓</span> <span>|</span>
+            <span class="keybindings-panel__key">Move: h/l/j/k ↑ ↓</span> <span>|</span>
             <span class="keybindings-panel__key">Resume session: Space</span> <span>|</span>
             <span class="keybindings-panel__key">New session: n</span> <span>|</span>
+            <span class="keybindings-panel__key">Prompt session: p</span> <span>|</span>
             <span class="keybindings-panel__key">Delete session: d</span> <span>|</span>
             <span class="keybindings-panel__key">Quit: q</span> <span>|</span>
             <span class="keybindings-panel__key">Help: ?</span>

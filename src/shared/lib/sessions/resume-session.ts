@@ -3,7 +3,7 @@ import { isCodexAppServerActiveWriterError } from "../../../repositories/app-ser
 import type { CodexSessionSummary } from "../../../repositories/sessions/codex/types.js";
 
 type SessionResumeClient = {
-  resumeThread(threadId: string, cwd?: string): Promise<unknown>;
+  resumeThread(threadId: string, cwd?: string): Promise<{ threadId: string }>;
 };
 
 type SessionResumeControllerOptions = {
@@ -19,9 +19,11 @@ type SessionResumeControllerOptions = {
 export type SessionResumeController = {
   clearActiveSession(sessionId?: string): void;
   dispose(): void;
+  getActiveThreadId(): string | null;
   getActiveSessionId(): string | null;
   isSessionActive(sessionId: string): boolean;
   isSessionResuming(sessionId: string): boolean;
+  markSessionActive(sessionId: string, threadId?: string | null): void;
   resumeSession(requestedSession: CodexSessionSummary, resumeProjectPath: string): Promise<void>;
   showAlreadyRunningStatus(sessionId: string): void;
 };
@@ -31,6 +33,7 @@ export type SessionResumeController = {
  */
 export function createSessionResumeController(options: SessionResumeControllerOptions): SessionResumeController {
   let activeSessionId: string | null = null;
+  let activeThreadId: string | null = null;
   let resumingSessionId: string | null = null;
   let resumeRequestVersion = 0;
   let alreadyRunningTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,6 +67,12 @@ export function createSessionResumeController(options: SessionResumeControllerOp
     }, 1000);
   }
 
+  function markSessionActive(sessionId: string, threadId?: string | null): void {
+    activeSessionId = sessionId;
+    activeThreadId = threadId ?? sessionId;
+    options.setActiveSessionId(activeSessionId);
+  }
+
   async function resumeSession(requestedSession: CodexSessionSummary, resumeProjectPath: string): Promise<void> {
     const currentResumeRequestVersion = resumeRequestVersion + 1;
     resumeRequestVersion = currentResumeRequestVersion;
@@ -75,15 +84,14 @@ export function createSessionResumeController(options: SessionResumeControllerOp
     options.setSessionResuming(resumingSessionId);
 
     try {
-      await options.client.resumeThread(requestedSession.id, resumeProjectPath);
+      const resumedThread = await options.client.resumeThread(requestedSession.id, resumeProjectPath);
 
       if (currentResumeRequestVersion !== resumeRequestVersion) return;
 
-      activeSessionId = requestedSession.id;
+      markSessionActive(requestedSession.id, resumedThread.threadId);
       resumingSessionId = null;
 
       options.setSessionResuming(null);
-      options.setActiveSessionId(activeSessionId);
     } catch (error) {
       if (currentResumeRequestVersion !== resumeRequestVersion) return;
 
@@ -112,14 +120,21 @@ export function createSessionResumeController(options: SessionResumeControllerOp
       if (sessionId && activeSessionId !== sessionId) return;
 
       activeSessionId = null;
+      activeThreadId = null;
       options.setActiveSessionId(null);
     },
     dispose(): void {
       resumeRequestVersion += 1;
+      activeSessionId = null;
+      activeThreadId = null;
       resumingSessionId = null;
+      options.setActiveSessionId(null);
       options.setSessionResuming(null);
       clearAlreadyRunningStatus();
       clearResumeFailedStatus();
+    },
+    getActiveThreadId(): string | null {
+      return activeThreadId;
     },
     getActiveSessionId(): string | null {
       return activeSessionId;
@@ -130,6 +145,7 @@ export function createSessionResumeController(options: SessionResumeControllerOp
     isSessionResuming(sessionId: string): boolean {
       return sessionId === resumingSessionId;
     },
+    markSessionActive,
     resumeSession,
     showAlreadyRunningStatus,
   };

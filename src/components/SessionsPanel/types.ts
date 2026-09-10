@@ -33,5 +33,6 @@ export type SessionsPanelElement = HTMLElement & {
   repository: CodexSessionReader;
   readonly selectedSession: CodexSessionSummary | null;
   reload(): Promise<void>;
+  selectSession(sessionId: string): boolean;
   syncSession(sessionId: string): Promise<CodexSessionSummary | null>;
 };

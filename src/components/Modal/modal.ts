@@ -3,6 +3,8 @@ import { ModalName } from "../../shared/lib/modal/index.js";
 import { Keybindings } from "../../app/keybindings.types.js";
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureHelpInfoModalDefined } from "./modules/HelpInfoModal/help-info-modal.js";
+import { ensurePromptSessionModalDefined } from "./modules/PromptSessionModal/prompt-session-modal.js";
+import { ensureSessionPromptErrorModalDefined } from "./modules/SessionPromptErrorModal/session-prompt-error-modal.js";
 import { ensureStartNewSessionModalDefined } from "./modules/StartNewSessionModal/start-new-session-modal.js";
 
 import type { ModalConfig } from "../../shared/lib/modal/index.js";
@@ -11,6 +13,8 @@ import type { ModalComponentDefinition, ModalElement, TermWindow } from "./types
 const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
   [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
   [ModalName.helpInfoModal]: { tagName: "help-info-modal", define: ensureHelpInfoModalDefined },
+  [ModalName.promptSessionModal]: { tagName: "prompt-session-modal", define: ensurePromptSessionModalDefined },
+  [ModalName.sessionPromptErrorModal]: { tagName: "session-prompt-error-modal", define: ensureSessionPromptErrorModalDefined },
   [ModalName.startNewSessionModal]: { tagName: "start-new-session-modal", define: ensureStartNewSessionModalDefined },
 };
 
@@ -38,7 +42,7 @@ export function ensureModalDefined(window: TermWindow): void {
 
       if (!modalConfig.isActive) return;
 
-      if (event.key === Keybindings.ENTER && this.confirmActiveModal(modalConfig)) {
+      if (event.key === Keybindings.ENTER && !event.shiftKey && this.confirmActiveModal(modalConfig)) {
         event.preventDefault();
         return;
       }

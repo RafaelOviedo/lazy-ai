@@ -6,6 +6,8 @@ export enum Keybindings {
   N = "n",
   D = "d",
   Q = "q",
+  E = "e",
+  P = "p",
   ENTER = "Enter",
   SPACE = " ",
   ESCAPE = "Escape",

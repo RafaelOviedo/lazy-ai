@@ -12,7 +12,7 @@ type SessionStartControllerOptions = {
   client: SessionStartClient;
   getSession(sessionId: string): StartedSession | null;
   setActivityStatus(status: string | null): void;
-  setActiveSessionId(sessionId: string | null): void;
+  setActiveSession(sessionId: string, threadId: string): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
   setLoadError(error: string | null): void;
   setSessionThinking(sessionId: string | null): void;
@@ -61,7 +61,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
 
       if (currentStartRequestVersion !== startRequestVersion) return;
 
-      options.setActiveSessionId(startedThread.sessionId);
+      options.setActiveSession(startedThread.sessionId, startedThread.threadId);
       options.setSessionThinking(startedThread.sessionId);
       options.setDetailsThinkingSessionId(startedThread.sessionId);
       options.setActivityStatus("Thinking...");
@@ -86,7 +86,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       options.setDetailsThinkingSessionId(null);
-      options.setActiveSessionId(startedThread.sessionId);
+      options.setActiveSession(startedThread.sessionId, startedThread.threadId);
       options.syncStatusPanel();
     } catch (error) {
       if (currentStartRequestVersion !== startRequestVersion) return;

@@ -21,7 +21,7 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
-import { createSessionDeleteController, createSessionResumeController, createSessionStartController } from "../shared/lib/sessions/index.js";
+import { createSessionDeleteController, createSessionPromptController, createSessionResumeController, createSessionStartController } from "../shared/lib/sessions/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
@@ -167,9 +167,28 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     setActivityStatus: (status) => {
       activityStatus = status;
     },
-    setActiveSessionId: (sessionId) => {
-      if (sessionsPanel) {
-        sessionsPanel.activeSessionId = sessionId;
+    setActiveSession: (sessionId, threadId) => sessionResumeController.markSessionActive(sessionId, threadId),
+    setDetailsThinkingSessionId: (sessionId) => {
+      if (detailsPanel) {
+        detailsPanel.thinkingSessionId = sessionId;
+      }
+    },
+    setLoadError: (error) => {
+      loadError = error;
+    },
+    setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
+    syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
+    syncStatusPanel,
+  });
+
+  const sessionPromptController = createSessionPromptController({
+    client: appServerClient,
+    setActivityStatus: (status) => {
+      activityStatus = status;
+    },
+    setDetailsPendingUserPrompt: (prompt) => {
+      if (detailsPanel) {
+        detailsPanel.pendingUserPrompt = prompt;
       }
     },
     setDetailsThinkingSessionId: (sessionId) => {
@@ -310,12 +329,48 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     });
   }
 
+  function openPromptSessionModal() {
+    if (sessionPromptController.isSessionPrompting()) return;
+
+    const activeSessionId = sessionResumeController.getActiveSessionId();
+    const activeThreadId = sessionResumeController.getActiveThreadId();
+
+    if (!activeSessionId || !activeThreadId) {
+      openModal(ModalName.sessionPromptErrorModal, {
+        message: "Resume or start a session first",
+      });
+      return;
+    }
+
+    const activeSession = sessionsPanel?.getSession(activeSessionId)
+      ?? (selectedSession?.id === activeSessionId ? selectedSession : null);
+
+    if (!activeSession) {
+      openModal(ModalName.sessionPromptErrorModal, {
+        message: "Resume or start a session first",
+      });
+      return;
+    }
+
+    sessionsPanel?.selectSession(activeSession.id);
+
+    openModal(ModalName.promptSessionModal, {
+      onConfirm: (prompt: string) => {
+        closeModal();
+        sessionsPanel?.selectSession(activeSession.id);
+        void sessionPromptController.promptSession(prompt, activeSession, activeThreadId, activeSession.projectPath);
+      },
+      sessionTitle: activeSession.title,
+    });
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
 
     if (getModalConfig().isActive) return;
     if (handleModalShortcuts(event, key)) return;
     if (handleNewSessionShortcut(event, key)) return;
+    if (handlePromptSessionShortcut(event, key)) return;
     if (handleQuitShortcut(event, key)) return;
     if (handlePanelNavigation(event, key)) return;
   }
@@ -333,6 +388,14 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     event.preventDefault();
     openStartNewSessionModal();
+    return true;
+  }
+
+  function handlePromptSessionShortcut(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.P) return false;
+
+    event.preventDefault();
+    openPromptSessionModal();
     return true;
   }
 
@@ -388,6 +451,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   return () => {
     sessionDeleteController.dispose();
+    sessionPromptController.dispose();
     sessionResumeController.dispose();
     sessionStartController.dispose();
     appServerClient.dispose();

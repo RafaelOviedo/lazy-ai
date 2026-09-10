@@ -240,6 +240,27 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Selects one loaded session by id.
+     */
+    selectSession(sessionId: string): boolean {
+      const nextSessionIndex = this.sessions.findIndex((session) => session.id === sessionId);
+
+      if (nextSessionIndex === -1) return false;
+
+      const previousSessionIndex = this.selectedSessionIndex;
+      this.selectedSessionIndex = nextSessionIndex;
+
+      if (this.isConnected) {
+        this.updateSelectedSessionMarkup(previousSessionIndex, this.selectedSessionIndex);
+        this.updateSessionCountMarkup();
+        this.revealSelectedSession();
+        this.dispatchSelectionChange();
+      }
+
+      return true;
+    }
+
+    /**
      * Reports whether the current rendered session list contains one session id.
      */
     hasSession(sessionId: string): boolean {
@@ -764,7 +785,16 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       return `
         <div class="${selectedClass}" data-session-id="${escapeHtml(session.id)}" data-session-index="${index}"${selectedAttribute}>
-          <div><span data-selection-marker="true">${marker}</span> <span class="sessions-panel__item-title">${escapeHtml(session.title)}</span> <span class="sessions-panel__meta">${escapeHtml(session.relativeUpdated)} · <span data-session-status="true">${this.renderSessionStatusMarkup(session)}</span></span></div>
+          <div style="border: 1px solid red; width: 45px;">
+            <div>
+              <span data-selection-marker="true">${marker}</span> 
+              <span class="sessions-panel__item-title">${escapeHtml(session.title).slice(0, 35)}...</span> 
+            </div>
+            <span class="sessions-panel__meta">
+              ${escapeHtml(session.relativeUpdated)} · 
+              <span data-session-status="true">${this.renderSessionStatusMarkup(session)}</span>
+            </span>
+          </div>
         </div>
       `;
     }
@@ -794,7 +824,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       }
 
       if (session.id === this.activeSessionIdValue) {
-        return `<span class="sessions-panel__status-running">Running</span>`;
+        return `<span class="sessions-panel__status-running">Active</span>`;
       }
 
       return escapeHtml(session.status);

@@ -122,7 +122,7 @@ export class CodexAppServerClient {
     });
 
     return {
-      threadId: result.thread?.sessionId ?? result.thread?.id ?? threadId,
+      threadId: result.thread?.id ?? result.thread?.sessionId ?? threadId,
     };
   }
 

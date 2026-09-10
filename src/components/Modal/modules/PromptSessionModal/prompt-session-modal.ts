@@ -1,22 +1,22 @@
 import { escapeHtml } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
-import type { StartNewSessionModalPayload } from "./types.js";
+import type { PromptSessionModalPayload } from "./types.js";
 
 /**
- * Registers the new session modal custom element against a TermDOM window.
+ * Registers the prompt modal custom element against a TermDOM window.
  */
-export function ensureStartNewSessionModalDefined(window: TermWindow): void {
-  if (window.customElements.get("start-new-session-modal")) {
+export function ensurePromptSessionModalDefined(window: TermWindow): void {
+  if (window.customElements.get("prompt-session-modal")) {
     return;
   }
 
   /**
-   * Renders the prompt input used to start a new Codex session.
+   * Renders the prompt input used to ask on a running Codex session.
    */
-  class StartNewSessionModal extends window.HTMLElement {
+  class PromptSessionModal extends window.HTMLElement {
     private closeModalValue: () => void = () => { };
-    private payloadValue: StartNewSessionModalPayload | undefined;
+    private payloadValue: PromptSessionModalPayload | undefined;
     private readonly onPromptKeyDownCapture = (event: KeyboardEvent): void => {
       const input = this.getPromptInputFromEvent(event);
 
@@ -53,7 +53,7 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
       this.removeEventListener("keydown", this.onPromptKeyDown);
     }
 
-    set payload(value: StartNewSessionModalPayload | undefined) {
+    set payload(value: PromptSessionModalPayload | undefined) {
       if (this.payloadValue === value) return;
 
       this.payloadValue = value;
@@ -63,7 +63,7 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
       }
     }
 
-    get payload(): StartNewSessionModalPayload | undefined {
+    get payload(): PromptSessionModalPayload | undefined {
       return this.payloadValue;
     }
 
@@ -89,19 +89,19 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
     }
 
     focusInitialElement(): void {
-      const input = this.querySelector<HTMLTextAreaElement>("[data-new-session-input='true']");
+      const input = this.querySelector<HTMLTextAreaElement>("[data-session-prompt-input='true']");
 
       input?.focus();
     }
 
     private getPromptValue(): string {
-      const input = this.querySelector<HTMLTextAreaElement>("[data-new-session-input='true']");
+      const input = this.querySelector<HTMLTextAreaElement>("[data-session-prompt-input='true']");
 
       return input?.value.trim() ?? "";
     }
 
     private getPromptInputFromEvent(event: KeyboardEvent): HTMLTextAreaElement | null {
-      const input = this.querySelector<HTMLTextAreaElement>("[data-new-session-input='true']");
+      const input = this.querySelector<HTMLTextAreaElement>("[data-session-prompt-input='true']");
 
       return event.target === input ? input : null;
     }
@@ -121,9 +121,11 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
     }
 
     private render(): void {
+      const sessionTitle = this.payloadValue?.sessionTitle ?? "Untitled session";
+
       this.innerHTML = `
         <style>
-          start-new-session-modal {
+          prompt-session-modal {
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
@@ -136,24 +138,24 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
             padding: 1px;
           }
 
-          .start-new-session-modal__title {
+          .prompt-session-modal__title {
             color: #d7ecff;
             font-weight: bold;
             text-align: center;
             margin-bottom: 1px;
           }
 
-          .start-new-session-modal__content {
+          .prompt-session-modal__content {
             display: flex;
             flex-direction: column;
             gap: 1px;
           }
 
-          .start-new-session-modal__label {
+          .prompt-session-modal__label {
             color: #8aa4bf;
           }
 
-          .start-new-session-modal__input {
+          .prompt-session-modal__input {
             width: 100%;
             min-height: 5rem;
             box-sizing: border-box;
@@ -166,27 +168,27 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
             white-space: pre-wrap;
           }
 
-          .start-new-session-modal__input:focus {
+          .prompt-session-modal__input:focus {
             border-color: #fff;
             outline: none;
             text-decoration: none;
             text-decoration-line: none;
           }
 
-          .start-new-session-modal__actions {
+          .prompt-session-modal__actions {
             color: #d7ba7d;
           }
         </style>
 
-        <legend class="start-new-session-modal__title">${escapeHtml("Start a new session")}</legend>
-        <div class="start-new-session-modal__content">
-          <label class="start-new-session-modal__label" for="new-session-prompt">Write your prompt</label>
-          <textarea class="start-new-session-modal__input" data-new-session-input="true" id="new-session-prompt"></textarea>
-          <div class="start-new-session-modal__actions">To confirm press Enter, Ctrl+J for a new line, Esc to cancel</div>
+        <legend class="prompt-session-modal__title">${escapeHtml(`Ask on "${sessionTitle}"`)}</legend>
+        <div class="prompt-session-modal__content">
+          <label class="prompt-session-modal__label" for="session-prompt">Write your prompt</label>
+          <textarea class="prompt-session-modal__input" data-session-prompt-input="true" id="session-prompt"></textarea>
+          <div class="prompt-session-modal__actions">To confirm press Enter, Ctrl+J for a new line, Esc to cancel</div>
         </div>
       `;
     }
   }
 
-  window.customElements.define("start-new-session-modal", StartNewSessionModal);
+  window.customElements.define("prompt-session-modal", PromptSessionModal);
 }
