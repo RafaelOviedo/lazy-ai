@@ -3,6 +3,7 @@ import { ModalName } from "../../shared/lib/modal/index.js";
 import { Keybindings } from "../../app/keybindings.types.js";
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureHelpInfoModalDefined } from "./modules/HelpInfoModal/help-info-modal.js";
+import { ensureStartNewSessionModalDefined } from "./modules/StartNewSessionModal/start-new-session-modal.js";
 
 import type { ModalConfig } from "../../shared/lib/modal/index.js";
 import type { ModalComponentDefinition, ModalElement, TermWindow } from "./types.js";
@@ -10,6 +11,7 @@ import type { ModalComponentDefinition, ModalElement, TermWindow } from "./types
 const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
   [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
   [ModalName.helpInfoModal]: { tagName: "help-info-modal", define: ensureHelpInfoModalDefined },
+  [ModalName.startNewSessionModal]: { tagName: "start-new-session-modal", define: ensureStartNewSessionModalDefined },
 };
 
 const defaultPreloadedModal = ModalName.helpInfoModal;
@@ -97,8 +99,13 @@ export function ensureModalDefined(window: TermWindow): void {
         this.renderModalShell(modalConfig, modalComponent);
       }
 
-      this.syncModalElement(modalConfig, modalComponent);
-      this.focus();
+      const modalElement = this.syncModalElement(modalComponent);
+
+      if (modalElement?.focusInitialElement) {
+        modalElement.focusInitialElement();
+      } else {
+        this.focus();
+      }
     }
 
     /**
@@ -146,13 +153,15 @@ export function ensureModalDefined(window: TermWindow): void {
     /**
      * Passes the current payload and close callback to the active modal element.
      */
-    private syncModalElement(modalConfig: ModalConfig, modalComponent: ModalComponentDefinition): void {
+    private syncModalElement(modalComponent: ModalComponentDefinition): ModalElement | null {
       const modalElement = this.querySelector<ModalElement>(modalComponent.tagName);
 
-      if (!modalElement) return;
+      if (!modalElement) return null;
 
       modalElement.closeModal = this.modal.closeModal.bind(this.modal);
-      modalElement.payload = modalConfig.payload;
+      modalElement.payload = this.modal.getModalConfig().payload;
+
+      return modalElement;
     }
 
     /**
