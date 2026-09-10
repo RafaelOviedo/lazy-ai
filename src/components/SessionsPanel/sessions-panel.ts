@@ -6,6 +6,18 @@ import type { CodexSessionReader, CodexSessionSummary } from "../../repositories
 
 import { SessionDeleteRequestDetail, SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
 
+type SessionStatusPresentation = {
+  className: string | null;
+  text: string;
+};
+
+const fallbackSessionTitleLength = 10;
+const minSessionTitleLength = 10;
+const maxSessionTitleLength = 40;
+const sessionsPanelViewportRatio = 0.3 * 0.98;
+const sessionRowPaddingWidth = 3;
+const sessionPanelBorderWidth = 2;
+
 /**
  * Registers the Sessions panel custom element against a TermDOM window.
  */
@@ -36,6 +48,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.onKeyDown = this.onKeyDown.bind(this);
       this.onFocus = this.onFocus.bind(this);
       this.onBlur = this.onBlur.bind(this);
+      this.onResize = this.onResize.bind(this);
     }
 
     /**
@@ -50,6 +63,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.addEventListener("focus", this.onFocus);
       this.addEventListener("blur", this.onBlur);
       this.addEventListener("keydown", this.onKeyDown);
+      window.addEventListener("resize", this.onResize);
 
       if (this.projectPathValue) {
         void this.reload();
@@ -63,6 +77,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.removeEventListener("focus", this.onFocus);
       this.removeEventListener("blur", this.onBlur);
       this.removeEventListener("keydown", this.onKeyDown);
+      window.removeEventListener("resize", this.onResize);
     }
 
     /**
@@ -320,8 +335,10 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.innerHTML = `
         <style>
           sessions-panel {
-            display: block;
+            display: flex;
+            flex-direction: column;
             width: fit-content;
+            height: 30%;
             min-height: 30%;
             border: 1px solid #5fafff;
             border-radius: 5px;
@@ -348,14 +365,15 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             display: flex;
             justify-content: flex-start;
             align-items: center;
+            flex: 0 0 auto;
             color: #5fafff;
             border: 1px solid transparent;
           }
 
           .sessions-panel__content {
+            flex: 1 1 auto;
+            min-height: 0;
             overflow: scroll;
-            max-height: 15px;
-            height: 12px;
           }
 
           .sessions-panel__item {
@@ -511,10 +529,15 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       const index = this.sessions.findIndex((session) => session.id === sessionId);
       const item = index === -1 ? null : this.getSessionItemElement(index);
       const status = item?.querySelector<HTMLElement>("[data-session-status='true']");
+      const title = item?.querySelector<HTMLElement>("[data-session-title='true']");
 
       if (!status || index === -1) return;
 
       status.innerHTML = this.renderSessionStatusMarkup(this.sessions[index]);
+
+      if (title) {
+        title.textContent = this.truncateSessionTitle(this.sessions[index]);
+      }
     }
 
     /**
@@ -670,6 +693,18 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Recomputes adaptive title truncation when the terminal width changes.
+     */
+    private onResize(): void {
+      const content = this.querySelector<HTMLElement>(".sessions-panel__content");
+
+      if (!content || this.isLoading || this.loadError || this.sessions.length === 0) return;
+
+      content.innerHTML = this.renderContentMarkup();
+      this.revealSelectedSession();
+    }
+
+    /**
      * Emits the selected session so the rest of the layout can stay in sync.
      */
     private dispatchSelectionChange(): void {
@@ -782,14 +817,13 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       const marker = index === this.selectedSessionIndex ? "◉" : "○";
       const selectedClass = index === this.selectedSessionIndex ? "sessions-panel__item is-selected" : "sessions-panel__item";
       const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
+      const itemTitle = this.truncateSessionTitle(session);
 
       return `
         <div class="${selectedClass}" data-session-id="${escapeHtml(session.id)}" data-session-index="${index}"${selectedAttribute}>
-          <div style="border: 1px solid red; width: 45px;">
-            <div>
-              <span data-selection-marker="true">${marker}</span> 
-              <span class="sessions-panel__item-title">${escapeHtml(session.title).slice(0, 35)}...</span> 
-            </div>
+          <div>
+            <span data-selection-marker="true">${marker}</span> 
+            <span class="sessions-panel__item-title" data-session-title="true">${escapeHtml(itemTitle)}</span> 
             <span class="sessions-panel__meta">
               ${escapeHtml(session.relativeUpdated)} · 
               <span data-session-status="true">${this.renderSessionStatusMarkup(session)}</span>
@@ -799,35 +833,71 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       `;
     }
 
+    private truncateSessionTitle(session: CodexSessionSummary): string {
+      const titleLength = this.getSessionTitleLength(session);
+
+      if (session.title.length <= titleLength) return session.title;
+
+      return `${session.title.slice(0, titleLength - 3)}...`;
+    }
+
+    private getSessionTitleLength(session: CodexSessionSummary): number {
+      const rowWidth = this.getSessionRowWidth();
+      const metaText = `${session.relativeUpdated}`;
+      const availableTitleWidth = rowWidth - metaText.length - sessionRowPaddingWidth;
+
+      return Math.min(
+        maxSessionTitleLength,
+        Math.max(minSessionTitleLength, availableTitleWidth),
+      );
+    }
+
+    private getSessionRowWidth(): number {
+      const parentWidth = this.parentElement?.clientWidth ?? 0;
+      const viewportPanelWidth = Math.floor(window.innerWidth * sessionsPanelViewportRatio);
+      const panelWidth = parentWidth > 0 ? parentWidth : viewportPanelWidth;
+
+      return Math.max(fallbackSessionTitleLength, panelWidth - sessionPanelBorderWidth);
+    }
+
     /**
      * Builds the saved/running status label.
      */
     private renderSessionStatusMarkup(session: CodexSessionSummary): string {
+      const status = this.resolveSessionStatus(session);
+      const statusText = escapeHtml(status.text);
+
+      return status.className
+        ? `<span class="${status.className}">${statusText}</span>`
+        : statusText;
+    }
+
+    private resolveSessionStatus(session: CodexSessionSummary): SessionStatusPresentation {
       if (session.id === this.resumeFailedSessionIdValue) {
-        return `<span class="sessions-panel__status-failed">Resume failed</span>`;
+        return { className: "sessions-panel__status-failed", text: "Resume failed" };
       }
 
       if (session.id === this.alreadyRunningSessionIdValue) {
-        return `<span class="sessions-panel__status-already-running">Already running</span>`;
+        return { className: "sessions-panel__status-already-running", text: "Already running" };
       }
 
       if (session.id === this.resumingSessionIdValue) {
-        return `<span class="sessions-panel__status-resuming">Resuming...</span>`;
+        return { className: "sessions-panel__status-resuming", text: "Resuming..." };
       }
 
       if (session.id === this.deletingSessionIdValue) {
-        return `<span class="sessions-panel__status-deleting">Deleting...</span>`;
+        return { className: "sessions-panel__status-deleting", text: "Deleting..." };
       }
 
       if (session.id === this.thinkingSessionIdValue) {
-        return `<span class="sessions-panel__status-thinking">Thinking...</span>`;
+        return { className: "sessions-panel__status-thinking", text: "Thinking..." };
       }
 
       if (session.id === this.activeSessionIdValue) {
-        return `<span class="sessions-panel__status-running">Active</span>`;
+        return { className: "sessions-panel__status-running", text: "Active" };
       }
 
-      return escapeHtml(session.status);
+      return { className: null, text: session.status };
     }
 
     /**
