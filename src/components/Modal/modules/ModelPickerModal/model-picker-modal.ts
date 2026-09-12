@@ -150,10 +150,10 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            width: 46%;
-            height: 70%;
-            max-height: 80%;
-            border: 1px solid #5fafff;
+            width: 45%;
+            height: 75%;
+            max-height: 90%;
+            border: 1px solid #fff;
             background: #000;
             border-radius: 5px;
             box-sizing: border-box;

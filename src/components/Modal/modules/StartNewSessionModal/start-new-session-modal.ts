@@ -129,7 +129,7 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
             justify-content: flex-start;
             width: 42%;
             min-height: 20%;
-            border: 1px solid #5fafff;
+            border: 1px solid #fff;
             background: #000;
             border-radius: 5px;
             box-sizing: border-box;
