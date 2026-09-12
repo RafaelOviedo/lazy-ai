@@ -1,4 +1,4 @@
-import type { CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
+import type { SessionSummary } from "../../app/types/index.js";
 import type { TermWindow } from "./types.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { formatTokenCount, getTokenBarSegments } from "../../shared/lib/tokens/index.js";
@@ -17,7 +17,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
   class ContextPanel extends window.HTMLElement {
     private projectNameValue = "";
     private projectPathValue = "";
-    private selectedSessionValue: CodexSessionSummary | null = null;
+    private selectedSessionValue: SessionSummary | null = null;
 
     /**
      * Initializes the panel markup when the element is attached.
@@ -79,7 +79,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
     /**
      * Updates the selected session context.
      */
-    set selectedSession(value: CodexSessionSummary | null) {
+    set selectedSession(value: SessionSummary | null) {
       if (this.selectedSessionValue === value) return;
 
       this.selectedSessionValue = value;
@@ -92,7 +92,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
     /**
      * Returns the selected session context.
      */
-    get selectedSession(): CodexSessionSummary | null {
+    get selectedSession(): SessionSummary | null {
       return this.selectedSessionValue;
     }
 

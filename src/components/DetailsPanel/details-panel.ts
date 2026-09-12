@@ -1,8 +1,9 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { renderMarkdown } from "../../shared/lib/markdown/index.js";
-import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
+import { CodexSessionRepository } from "../../providers/codex/codex-session-repository.js";
 
-import type { CodexConversationMessage, CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
+import type { ConversationMessage, SessionSummary } from "../../app/types/index.js";
+import type { SessionReader } from "../../app/ports/index.js";
 import type { PendingSessionPrompt } from "../../shared/lib/sessions/index.js";
 import type { TermWindow } from "./types.js";
 
@@ -22,13 +23,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
    * Renders selected-session detail content.
    */
   class DetailsPanel extends window.HTMLElement {
-    private selectedSessionValue: CodexSessionSummary | null = null;
+    private selectedSessionValue: SessionSummary | null = null;
     private pendingUserPromptValue: PendingSessionPrompt | null = null;
     private pendingUserPromptInitialMatchCount = 0;
     private thinkingSessionIdValue: string | null = null;
     private interruptedSessionIdValue: string | null = null;
-    private sessionReader: CodexSessionReader = new CodexSessionRepository();
-    private messages: CodexConversationMessage[] = [];
+    private sessionReader: SessionReader = new CodexSessionRepository();
+    private messages: ConversationMessage[] = [];
     private isLoading = false;
     private loadError: string | null = null;
     private loadVersion = 0;
@@ -75,7 +76,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Allows the page to replace the session reader implementation if needed.
      */
-    set repository(value: CodexSessionReader) {
+    set repository(value: SessionReader) {
       this.sessionReader = value;
 
       if (this.isConnected && this.selectedSessionValue) {
@@ -86,14 +87,14 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Returns the session reader used to load selected session details.
      */
-    get repository(): CodexSessionReader {
+    get repository(): SessionReader {
       return this.sessionReader;
     }
 
     /**
      * Updates the selected session shown in the details panel.
      */
-    set selectedSession(value: CodexSessionSummary | null) {
+    set selectedSession(value: SessionSummary | null) {
       const previousSessionId = this.selectedSessionValue?.id ?? null;
       const nextSessionId = value?.id ?? null;
 
@@ -109,7 +110,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Returns the selected session shown in the details panel.
      */
-    get selectedSession(): CodexSessionSummary | null {
+    get selectedSession(): SessionSummary | null {
       return this.selectedSessionValue;
     }
 
@@ -549,7 +550,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Loads the selected session transcript.
      */
     private async loadConversation(
-      selectedSession: CodexSessionSummary,
+      selectedSession: SessionSummary,
       loadVersion: number,
       reconcileExistingMarkup: boolean,
     ): Promise<void> {
@@ -584,7 +585,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Builds one transcript row.
      */
-    private renderMessageMarkup(message: CodexConversationMessage): string {
+    private renderMessageMarkup(message: ConversationMessage): string {
       return `
         <div class="details-panel__message" data-conversation-message="true" data-message-id="${escapeHtml(message.id)}">
           ${this.renderMessageInnerMarkup(message)}
@@ -595,7 +596,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Builds the content inside one transcript row.
      */
-    private renderMessageInnerMarkup(message: CodexConversationMessage): string {
+    private renderMessageInnerMarkup(message: ConversationMessage): string {
       const roleLabel = this.formatRoleLabel(message.role);
       const timestamp = this.formatTimestamp(message.timestamp);
 
@@ -626,7 +627,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Appends or updates rendered message rows for a same-session refresh.
      */
-    private syncConversationMarkup(messages: CodexConversationMessage[]): boolean {
+    private syncConversationMarkup(messages: ConversationMessage[]): boolean {
       if (!this.selectedSessionValue || this.renderedSessionId !== this.selectedSessionValue.id) return false;
 
       const messagesContainer = this.getMessagesContainer();
@@ -872,7 +873,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Builds a compact value for detecting same-id message edits.
      */
-    private getMessageFingerprint(message: CodexConversationMessage): string {
+    private getMessageFingerprint(message: ConversationMessage): string {
       return `${message.role}\n${message.timestamp ?? ""}\n${message.text}`;
     }
 
@@ -957,7 +958,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Detects when the persisted transcript has caught up with the optimistic row.
      */
-    private shouldClearPendingUserPrompt(messages: CodexConversationMessage[]): boolean {
+    private shouldClearPendingUserPrompt(messages: ConversationMessage[]): boolean {
       const pendingUserPrompt = this.pendingUserPromptValue;
 
       if (!pendingUserPrompt) return false;
@@ -986,7 +987,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Counts persisted user messages with the same text as the optimistic prompt.
      */
-    private countMatchingUserPromptMessages(messages: CodexConversationMessage[], promptText: string): number {
+    private countMatchingUserPromptMessages(messages: ConversationMessage[], promptText: string): number {
       return messages.filter((message) => {
         return message.role === "user" && message.text.trim() === promptText;
       }).length;
@@ -1024,7 +1025,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Renders user text plainly and assistant output as terminal-friendly Markdown.
      */
-    private renderMessageTextMarkup(message: CodexConversationMessage): string {
+    private renderMessageTextMarkup(message: ConversationMessage): string {
       if (message.role === "assistant") {
         return renderMarkdown(message.text);
       }
@@ -1035,7 +1036,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Formats a role for display in the transcript.
      */
-    private formatRoleLabel(role: CodexConversationMessage["role"]): string {
+    private formatRoleLabel(role: ConversationMessage["role"]): string {
       if (role === "user") return "You";
 
       return "Assistant";

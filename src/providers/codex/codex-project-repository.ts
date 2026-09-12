@@ -1,17 +1,14 @@
-import { CodexSessionRepository } from "../../sessions/codex/index.js";
+import { CodexSessionRepository } from "./codex-session-repository.js";
 
-import type { CodexSessionReader } from "../../sessions/codex/types.js";
-import type { CodexProjectReader, CodexProjectSummary } from "./types.js";
-
-export type CodexProjectRepositoryOptions = {
-  sessionReader?: CodexSessionReader;
-};
+import type { ProjectSummary } from "../../app/types/index.js";
+import type { ProjectReader, SessionReader } from "../../app/ports/index.js";
+import type { CodexProjectRepositoryOptions } from "./types.js";
 
 /**
  * Builds a project list from persisted Codex session history.
  */
-export class CodexProjectRepository implements CodexProjectReader {
-  private readonly sessionReader: CodexSessionReader;
+export class CodexProjectRepository implements ProjectReader {
+  private readonly sessionReader: SessionReader;
 
   constructor(options: CodexProjectRepositoryOptions = {}) {
     this.sessionReader = options.sessionReader ?? new CodexSessionRepository();
@@ -20,9 +17,9 @@ export class CodexProjectRepository implements CodexProjectReader {
   /**
    * Returns projects grouped by workspace path, newest activity first.
    */
-  async listProjects(): Promise<CodexProjectSummary[]> {
+  async listProjects(): Promise<ProjectSummary[]> {
     const sessions = await this.sessionReader.listByProject();
-    const projects = new Map<string, CodexProjectSummary>();
+    const projects = new Map<string, ProjectSummary>();
 
     for (const session of sessions) {
       const existingProject = projects.get(session.projectPath);

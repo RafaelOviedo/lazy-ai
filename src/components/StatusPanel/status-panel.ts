@@ -1,7 +1,7 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { getTokenBarSegments } from "../../shared/lib/tokens/index.js";
 
-import type { CodexSessionSummary, UsageLimitSnapshot, UsageLimitWindow } from "../../repositories/sessions/codex/types.js";
+import type { SessionSummary, UsageLimitSnapshot, UsageLimitWindow } from "../../app/types/index.js";
 import type { TermWindow } from "./types.js";
 
 /**
@@ -18,7 +18,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
   class StatusPanel extends window.HTMLElement {
     private loadErrorValue: string | null = null;
     private projectLoadErrorValue: string | null = null;
-    private selectedSessionValue: CodexSessionSummary | null = null;
+    private selectedSessionValue: SessionSummary | null = null;
     private usageLimitSnapshotValue: UsageLimitSnapshot | null = null;
 
     /**
@@ -71,7 +71,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
     /**
      * Updates the selected session shown in the status panel.
      */
-    set selectedSession(value: CodexSessionSummary | null) {
+    set selectedSession(value: SessionSummary | null) {
       if (this.selectedSessionValue === value) return;
 
       this.selectedSessionValue = value;
@@ -84,7 +84,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
     /**
      * Returns the selected session shown in the status panel.
      */
-    get selectedSession(): CodexSessionSummary | null {
+    get selectedSession(): SessionSummary | null {
       return this.selectedSessionValue;
     }
 

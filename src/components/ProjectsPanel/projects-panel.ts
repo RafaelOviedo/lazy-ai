@@ -1,8 +1,9 @@
-import { CodexProjectRepository } from "../../repositories/projects/codex/index.js";
+import { CodexProjectRepository } from "../../providers/codex/codex-project-repository.js";
 
 import { escapeHtml } from "../../shared/lib/html/index.js";
 
-import type { CodexProjectReader, CodexProjectSummary } from "../../repositories/projects/codex/types.js";
+import type { ProjectSummary } from "../../app/types/index.js";
+import type { ProjectReader } from "../../app/ports/index.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
 
 /**
@@ -18,8 +19,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
    */
   class ProjectsPanel extends window.HTMLElement {
     private projectPathValue = "";
-    private projectReader: CodexProjectReader = new CodexProjectRepository();
-    private projects: CodexProjectSummary[] = [];
+    private projectReader: ProjectReader = new CodexProjectRepository();
+    private projects: ProjectSummary[] = [];
     private selectedProjectIndex = 0;
     private selectedSessionIndex = 0;
     private isLoading = true;
@@ -82,7 +83,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     /**
      * Allows the page to replace the project reader implementation if needed.
      */
-    set repository(value: CodexProjectReader) {
+    set repository(value: ProjectReader) {
       this.projectReader = value;
 
       if (this.isConnected) {
@@ -93,7 +94,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     /**
      * Exposes the currently selected project to parent views.
      */
-    get selectedProject(): CodexProjectSummary | null {
+    get selectedProject(): ProjectSummary | null {
       return this.projects[this.selectedProjectIndex] ?? null;
     }
 

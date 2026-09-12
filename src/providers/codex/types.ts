@@ -1,73 +1,12 @@
-
-export interface CodexSessionReader {
-  listByProject(projectPath?: string): Promise<CodexSessionSummary[]>;
-  getLatestUsageLimit(): Promise<UsageLimitSnapshot | null>;
-  getConversation(sessionId: string): Promise<CodexSessionConversation>;
-}
+import type { ContextUsage, UsageLimit } from "../../app/types/index.js";
+import type { SessionReader } from "../../app/ports/index.js";
 
 export type CodexSessionRepositoryOptions = {
   codexRootPath?: string;
 };
 
-export type CodexSessionSummary = {
-  id: string;
-  title: string;
-  updatedAt: string;
-  relativeUpdated: string;
-  projectPath: string;
-  projectName: string;
-  model: string;
-  contextUsage?: ContextUsage;
-  usageLimit?: UsageLimit;
-  status: string;
-};
-
-export type ContextUsage = {
-  usedTokens: number;
-  maxTokens: number;
-  percent: number;
-};
-
-export type CodexSessionConversation = {
-  sessionId: string;
-  messages: CodexConversationMessage[];
-};
-
-export type CodexConversationMessage = {
-  id: string;
-  role: CodexConversationRole;
-  text: string;
-  timestamp?: string;
-};
-
-export type CodexConversationRole = "user" | "assistant";
-
-export type UsageLimit = {
-  limitId?: string;
-  limitName?: string | null;
-  primary?: UsageLimitWindow;
-  secondary?: UsageLimitWindow;
-  credits?: UsageLimitCredits;
-  planType?: string;
-  rateLimitReachedType?: string | null;
-};
-
-export type UsageLimitSnapshot = {
-  usageLimit: UsageLimit;
-  observedAt: string;
-};
-
-export type UsageLimitWindow = {
-  usedPercent: number;
-  remainingPercent: number;
-  windowMinutes?: number;
-  resetsAt?: number;
-};
-
-export type UsageLimitCredits = {
-  hasCredits?: boolean;
-  unlimited?: boolean;
-  balance?: number | null;
+export type CodexProjectRepositoryOptions = {
+  sessionReader?: SessionReader;
 };
 
 export type SessionIndexRow = {

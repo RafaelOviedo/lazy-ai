@@ -1,4 +1,4 @@
-import type { CodexSessionSummary } from "../../../repositories/sessions/codex/types.js";
+import type { SessionSummary } from "../../../app/types/index.js";
 
 type SessionDeleteClient = {
   deleteThread(threadId: string): Promise<unknown>;
@@ -14,7 +14,7 @@ type SessionDeleteControllerOptions = {
 };
 
 export type SessionDeleteController = {
-  deleteSession(requestedSession: CodexSessionSummary): Promise<void>;
+  deleteSession(requestedSession: SessionSummary): Promise<void>;
   dispose(): void;
   isSessionDeleting(sessionId: string): boolean;
 };
@@ -26,7 +26,7 @@ export function createSessionDeleteController(options: SessionDeleteControllerOp
   let deletingSessionId: string | null = null;
   let deleteRequestVersion = 0;
 
-  async function deleteSession(requestedSession: CodexSessionSummary): Promise<void> {
+  async function deleteSession(requestedSession: SessionSummary): Promise<void> {
     const currentDeleteRequestVersion = deleteRequestVersion + 1;
     deleteRequestVersion = currentDeleteRequestVersion;
     deletingSessionId = requestedSession.id;

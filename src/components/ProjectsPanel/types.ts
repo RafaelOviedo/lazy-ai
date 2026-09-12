@@ -1,18 +1,19 @@
 import type { TermDOM } from "@b9g/termdom";
 
-import type { CodexProjectReader, CodexProjectSummary } from "../../repositories/projects/codex/types";
+import type { ProjectSummary } from "../../app/types/index.js";
+import type { ProjectReader } from "../../app/ports/index.js";
 
 export type TermWindow = TermDOM["window"];
 
 export type ProjectSelectionChangeDetail = {
-  project: CodexProjectSummary | null;
+  project: ProjectSummary | null;
   projectCount: number;
   error: string | null;
 };
 
 export type ProjectsPanelElement = HTMLElement & {
   projectPath: string;
-  repository: CodexProjectReader;
-  readonly selectedProject: CodexProjectSummary | null;
+  repository: ProjectReader;
+  readonly selectedProject: ProjectSummary | null;
   reload(): Promise<void>;
 };

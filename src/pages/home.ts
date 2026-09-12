@@ -1,6 +1,6 @@
-import type { CodexSessionSummary, UsageLimitSnapshot } from "../repositories/sessions/codex/types.js";
-import { CodexSessionRepository } from "../repositories/sessions/codex/index.js";
-import { CodexAppServerClient } from "../repositories/app-server/codex-app-server-client.js";
+import type { SessionSummary, UsageLimitSnapshot } from "../app/types/index.js";
+import { CodexSessionRepository } from "../providers/codex/codex-session-repository.js";
+import { CodexAppServerClient } from "../providers/codex/codex-app-server-client.js";
 
 import { type SessionsPanelElement, type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
@@ -119,7 +119,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let selectedProjectPath = projectPath;
   let selectedProjectName = initialProjectName;
 
-  let selectedSession: CodexSessionSummary | null = null;
+  let selectedSession: SessionSummary | null = null;
   let usageLimitSnapshot: UsageLimitSnapshot | null = null;
 
   let loadError: string | null = null;

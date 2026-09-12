@@ -1,6 +1,6 @@
-import { isCodexAppServerActiveWriterError } from "../../../repositories/app-server/codex-app-server-client.js";
+import { isCodexAppServerActiveWriterError } from "../../../providers/codex/codex-app-server-client.js";
 
-import type { CodexSessionSummary } from "../../../repositories/sessions/codex/types.js";
+import type { SessionSummary } from "../../../app/types/index.js";
 
 type SessionResumeClient = {
   resumeThread(threadId: string, cwd?: string): Promise<{ threadId: string }>;
@@ -24,7 +24,7 @@ export type SessionResumeController = {
   isSessionActive(sessionId: string): boolean;
   isSessionResuming(sessionId: string): boolean;
   markSessionActive(sessionId: string, threadId?: string | null): void;
-  resumeSession(requestedSession: CodexSessionSummary, resumeProjectPath: string): Promise<void>;
+  resumeSession(requestedSession: SessionSummary, resumeProjectPath: string): Promise<void>;
   showAlreadyRunningStatus(sessionId: string): void;
 };
 
@@ -73,7 +73,7 @@ export function createSessionResumeController(options: SessionResumeControllerOp
     options.setActiveSessionId(activeSessionId);
   }
 
-  async function resumeSession(requestedSession: CodexSessionSummary, resumeProjectPath: string): Promise<void> {
+  async function resumeSession(requestedSession: SessionSummary, resumeProjectPath: string): Promise<void> {
     const currentResumeRequestVersion = resumeRequestVersion + 1;
     resumeRequestVersion = currentResumeRequestVersion;
     resumingSessionId = requestedSession.id;

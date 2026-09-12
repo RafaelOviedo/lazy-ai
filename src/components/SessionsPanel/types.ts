@@ -1,29 +1,30 @@
 import { TermDOM } from "@b9g/termdom";
-import { CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types";
+import type { SessionSummary } from "../../app/types/index.js";
+import type { SessionReader } from "../../app/ports/index.js";
 
 export type TermWindow = TermDOM["window"];
 
 export type SessionSelectionChangeDetail = {
-  session: CodexSessionSummary | null;
+  session: SessionSummary | null;
   sessionCount: number;
   projectPath: string;
   error: string | null;
 };
 
 export type SessionResumeRequestDetail = {
-  session: CodexSessionSummary;
+  session: SessionSummary;
   projectPath: string;
 };
 
 export type SessionDeleteRequestDetail = {
-  session: CodexSessionSummary;
+  session: SessionSummary;
   projectPath: string;
 };
 
 export type SessionsPanelElement = HTMLElement & {
   activeSessionId: string | null;
   projectPath: string;
-  getSession(sessionId: string): CodexSessionSummary | null;
+  getSession(sessionId: string): SessionSummary | null;
   hasSession(sessionId: string): boolean;
   setSessionAlreadyRunning(sessionId: string | null): void;
   setSessionDeleting(sessionId: string | null): void;
@@ -31,9 +32,9 @@ export type SessionsPanelElement = HTMLElement & {
   setSessionResuming(sessionId: string | null): void;
   setSessionInterrupted(sessionId: string | null): void;
   setSessionThinking(sessionId: string | null): void;
-  repository: CodexSessionReader;
-  readonly selectedSession: CodexSessionSummary | null;
+  repository: SessionReader;
+  readonly selectedSession: SessionSummary | null;
   reload(): Promise<void>;
   selectSession(sessionId: string): boolean;
-  syncSession(sessionId: string): Promise<CodexSessionSummary | null>;
+  syncSession(sessionId: string): Promise<SessionSummary | null>;
 };

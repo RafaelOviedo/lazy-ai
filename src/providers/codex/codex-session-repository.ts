@@ -3,26 +3,28 @@ import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
 import type {
-  CodexConversationMessage,
-  CodexSessionReader,
-  CodexSessionConversation,
+  ConversationMessage,
+  ConversationRole,
+  SessionConversation,
+  SessionSummary,
+  UsageLimit,
+  UsageLimitSnapshot,
+} from "../../app/types/index.js";
+import type { SessionReader } from "../../app/ports/index.js";
+import type {
   CodexSessionRepositoryOptions,
-  CodexSessionSummary,
-  CodexConversationRole,
   SessionContext,
   SessionIndexRow,
   SessionMetaEvent,
   ThreadSettingsAppliedEvent,
   TokenCountEvent,
   TurnContextEvent,
-  UsageLimit,
-  UsageLimitSnapshot,
-} from "./types";
+} from "./types.js";
 
 /**
  * Reads persisted Codex sessions from the local Codex data directory.
  */
-export class CodexSessionRepository implements CodexSessionReader {
+export class CodexSessionRepository implements SessionReader {
   private readonly sessionIndexPath: string;
   private readonly sessionsDirectoryPath: string;
 
@@ -36,7 +38,7 @@ export class CodexSessionRepository implements CodexSessionReader {
   /**
    * Returns the latest persisted sessions, optionally scoped to one project path.
    */
-  async listByProject(projectPath?: string): Promise<CodexSessionSummary[]> {
+  async listByProject(projectPath?: string): Promise<SessionSummary[]> {
     const indexRows = await this.readJsonlFile<SessionIndexRow>(this.sessionIndexPath);
     const latestIndexRows = new Map<string, SessionIndexRow>();
 
@@ -46,7 +48,7 @@ export class CodexSessionRepository implements CodexSessionReader {
     }
 
     const sessionFiles = await this.findSessionFiles(this.sessionsDirectoryPath);
-    const sessions: CodexSessionSummary[] = [];
+    const sessions: SessionSummary[] = [];
 
     for (const [sessionId, sessionFilePath] of sessionFiles) {
       const indexRow = latestIndexRows.get(sessionId);
@@ -77,7 +79,7 @@ export class CodexSessionRepository implements CodexSessionReader {
   /**
    * Returns display-ready conversation messages for one persisted session.
    */
-  async getConversation(sessionId: string): Promise<CodexSessionConversation> {
+  async getConversation(sessionId: string): Promise<SessionConversation> {
     const sessionFiles = await this.findSessionFiles(this.sessionsDirectoryPath);
     const sessionFilePath = sessionFiles.get(sessionId);
 
@@ -134,10 +136,10 @@ export class CodexSessionRepository implements CodexSessionReader {
   /**
    * Extracts user-visible conversation items from a persisted session file.
    */
-  private async readConversationMessages(filePath: string, sessionId: string): Promise<CodexConversationMessage[]> {
+  private async readConversationMessages(filePath: string, sessionId: string): Promise<ConversationMessage[]> {
     try {
       const file = await readFile(filePath, "utf8");
-      const messages: CodexConversationMessage[] = [];
+      const messages: ConversationMessage[] = [];
 
       for (const [index, line] of file.split("\n").entries()) {
         const trimmedLine = line.trim();
@@ -161,7 +163,7 @@ export class CodexSessionRepository implements CodexSessionReader {
   /**
    * Converts a raw Codex response item into a normalized conversation message.
    */
-  private readConversationMessage(record: Record<string, unknown> | null, fallbackId: string): CodexConversationMessage | null {
+  private readConversationMessage(record: Record<string, unknown> | null, fallbackId: string): ConversationMessage | null {
     if (!record || record.type !== "response_item" || !this.isObject(record.payload)) {
       return null;
     }
@@ -191,7 +193,7 @@ export class CodexSessionRepository implements CodexSessionReader {
   /**
    * Keeps hidden setup roles out of the user-facing transcript.
    */
-  private readConversationRole(role: unknown): CodexConversationRole | null {
+  private readConversationRole(role: unknown): ConversationRole | null {
     if (role === "user" || role === "assistant") return role;
 
     return null;

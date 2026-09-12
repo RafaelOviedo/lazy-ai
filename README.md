@@ -160,7 +160,7 @@ npm run start    # run dist/index.js
 npm run check    # type-check only
 ```
 
-The app entry point is `index.ts`. The terminal page is assembled in `src/pages/home.ts`, with UI panels under `src/components` and Codex data readers under `src/repositories`.
+The app entry point is `index.ts`. The terminal page is assembled in `src/pages/home.ts`, with UI panels under `src/components`, provider-agnostic domain types and ports under `src/app`, and per-provider implementations under `src/providers` (currently `src/providers/codex`).
 
 ## Image Slots
 

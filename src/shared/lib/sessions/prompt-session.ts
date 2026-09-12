@@ -1,4 +1,4 @@
-import type { CodexSessionSummary } from "../../../repositories/sessions/codex/types.js";
+import type { SessionSummary } from "../../../app/types/index.js";
 
 type SessionPromptClient = {
   startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string }>;
@@ -15,7 +15,7 @@ type SessionPromptControllerOptions = {
   setSessionInterrupted(sessionId: string | null): void;
   setSessionThinking(sessionId: string | null): void;
   syncConversation(sessionId: string): Promise<void>;
-  syncSession(sessionId: string): Promise<CodexSessionSummary | null>;
+  syncSession(sessionId: string): Promise<SessionSummary | null>;
   syncStatusPanel(): void;
 };
 
@@ -30,7 +30,7 @@ export type SessionPromptController = {
   hasActiveTurn(): boolean;
   interruptActiveTurn(): Promise<boolean>;
   isSessionPrompting(): boolean;
-  promptSession(prompt: string, session: CodexSessionSummary, threadId: string, projectPath: string): Promise<void>;
+  promptSession(prompt: string, session: SessionSummary, threadId: string, projectPath: string): Promise<void>;
 };
 
 type ActiveSessionTurn = {
@@ -54,7 +54,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
 
   async function promptSession(
     prompt: string,
-    session: CodexSessionSummary,
+    session: SessionSummary,
     threadId: string,
     projectPath: string,
   ): Promise<void> {

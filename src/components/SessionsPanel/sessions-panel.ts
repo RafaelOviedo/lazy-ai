@@ -1,8 +1,9 @@
-import { CodexSessionRepository } from "../../repositories/sessions/codex/index.js";
+import { CodexSessionRepository } from "../../providers/codex/codex-session-repository.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { Keybindings } from "../../app/keybindings.types.js";
 
-import type { CodexSessionReader, CodexSessionSummary } from "../../repositories/sessions/codex/types.js";
+import type { SessionSummary } from "../../app/types/index.js";
+import type { SessionReader } from "../../app/ports/index.js";
 
 import { SessionDeleteRequestDetail, SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
 
@@ -40,8 +41,8 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private interruptedSessionIdValue: string | null = null;
     private alreadyRunningSessionIdValue: string | null = null;
     private resumeFailedSessionIdValue: string | null = null;
-    private sessionReader: CodexSessionReader = new CodexSessionRepository();
-    private sessions: CodexSessionSummary[] = [];
+    private sessionReader: SessionReader = new CodexSessionRepository();
+    private sessions: SessionSummary[] = [];
     private selectedSessionIndex = 0;
     private isLoading = true;
     private loadError: string | null = null;
@@ -255,7 +256,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Allows the page to replace the session reader implementation if needed.
      */
-    set repository(value: CodexSessionReader) {
+    set repository(value: SessionReader) {
       this.sessionReader = value;
 
       if (this.isConnected) {
@@ -266,14 +267,14 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Exposes the currently selected session to parent views.
      */
-    get selectedSession(): CodexSessionSummary | null {
+    get selectedSession(): SessionSummary | null {
       return this.sessions[this.selectedSessionIndex] ?? null;
     }
 
     /**
      * Returns one loaded session by id when it is present in the current list.
      */
-    getSession(sessionId: string): CodexSessionSummary | null {
+    getSession(sessionId: string): SessionSummary | null {
       return this.sessions.find((session) => session.id === sessionId) ?? null;
     }
 
@@ -332,7 +333,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Refreshes one session from storage and reconciles its row without entering full-panel loading.
      */
-    async syncSession(sessionId: string): Promise<CodexSessionSummary | null> {
+    async syncSession(sessionId: string): Promise<SessionSummary | null> {
       try {
         const sessions = await this.sessionReader.listByProject(this.projectPathValue);
         const session = sessions.find((candidateSession) => candidateSession.id === sessionId) ?? null;
@@ -627,7 +628,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Inserts or updates one session in the rendered list.
      */
-    private upsertSession(session: CodexSessionSummary): void {
+    private upsertSession(session: SessionSummary): void {
       if (this.projectPathValue && session.projectPath !== this.projectPathValue) return;
 
       const selectedSessionId = this.selectedSession?.id ?? null;
@@ -886,7 +887,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Builds one saved-session row.
      */
-    private renderSessionItemMarkup(session: CodexSessionSummary, index: number): string {
+    private renderSessionItemMarkup(session: SessionSummary, index: number): string {
       const marker = index === this.selectedSessionIndex ? "◉" : "○";
       const selectedClass = index === this.selectedSessionIndex ? "sessions-panel__item is-selected" : "sessions-panel__item";
       const selectedAttribute = index === this.selectedSessionIndex ? ' data-selected="true"' : "";
@@ -906,7 +907,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       `;
     }
 
-    private truncateSessionTitle(session: CodexSessionSummary): string {
+    private truncateSessionTitle(session: SessionSummary): string {
       const titleLength = this.getSessionTitleLength(session);
 
       if (session.title.length <= titleLength) return session.title;
@@ -914,7 +915,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       return `${session.title.slice(0, titleLength - 3)}...`;
     }
 
-    private getSessionTitleLength(session: CodexSessionSummary): number {
+    private getSessionTitleLength(session: SessionSummary): number {
       const rowWidth = this.getSessionRowWidth();
       const metaText = `${session.relativeUpdated}`;
       const availableTitleWidth = rowWidth - metaText.length - sessionRowPaddingWidth;
@@ -936,7 +937,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Builds the saved/running status label.
      */
-    private renderSessionStatusMarkup(session: CodexSessionSummary): string {
+    private renderSessionStatusMarkup(session: SessionSummary): string {
       const status = this.resolveSessionStatus(session);
       const statusText = escapeHtml(status.text);
 
@@ -956,7 +957,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       return thinkingSpinnerFrames[this.thinkingSpinnerFrame % thinkingSpinnerFrames.length];
     }
 
-    private resolveSessionStatus(session: CodexSessionSummary): SessionStatusPresentation {
+    private resolveSessionStatus(session: SessionSummary): SessionStatusPresentation {
       if (session.id === this.resumeFailedSessionIdValue) {
         return { className: "sessions-panel__status-failed", text: "Resume failed" };
       }
