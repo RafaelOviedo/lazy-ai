@@ -5,6 +5,24 @@ export type CodexSessionRepositoryOptions = {
   codexRootPath?: string;
 };
 
+export type CodexModelSourceOptions = {
+  codexRootPath?: string;
+};
+
+export type CodexAppServerClientOptions = {
+  model?: string | null;
+};
+
+export type CodexModelsCacheEntry = {
+  slug?: string;
+  display_name?: string;
+  description?: string;
+  default_reasoning_level?: string;
+  visibility?: string;
+  priority?: number;
+  context_window?: number;
+};
+
 export type CodexProjectRepositoryOptions = {
   sessionReader?: SessionReader;
 };

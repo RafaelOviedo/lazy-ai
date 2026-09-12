@@ -10,7 +10,7 @@ export type DetailsPanelElement = HTMLElement & {
   interruptedSessionId: string | null;
   readonly isConversationLoading: boolean;
   pendingUserPrompt: PendingSessionPrompt | null;
-  repository: SessionReader;
+  repository: SessionReader | null;
   selectedSession: SessionSummary | null;
   syncConversation(sessionId: string): Promise<void>;
   thinkingSessionId: string | null;

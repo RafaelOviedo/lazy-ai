@@ -5,6 +5,8 @@ import type { SessionSummary, UsageLimitSnapshot } from "../../app/types/index.j
 export type TermWindow = TermDOM["window"];
 
 export type StatusPanelElement = HTMLElement & {
+  activeModelLabel: string | null;
+  activeProviderLabel: string;
   loadError: string | null;
   projectLoadError: string | null;
   selectedSession: SessionSummary | null;

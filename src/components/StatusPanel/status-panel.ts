@@ -16,6 +16,8 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
    * Renders the current project/session status.
    */
   class StatusPanel extends window.HTMLElement {
+    private activeProviderLabelValue = "";
+    private activeModelLabelValue: string | null = null;
     private loadErrorValue: string | null = null;
     private projectLoadErrorValue: string | null = null;
     private selectedSessionValue: SessionSummary | null = null;
@@ -26,6 +28,32 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
      */
     connectedCallback(): void {
       this.render();
+    }
+
+    /**
+     * Updates the provider the app is currently pointed at.
+     */
+    set activeProviderLabel(value: string) {
+      if (this.activeProviderLabelValue === value) return;
+
+      this.activeProviderLabelValue = value;
+
+      if (this.isConnected) {
+        this.render();
+      }
+    }
+
+    /**
+     * Updates the model new sessions will start on.
+     */
+    set activeModelLabel(value: string | null) {
+      if (this.activeModelLabelValue === value) return;
+
+      this.activeModelLabelValue = value;
+
+      if (this.isConnected) {
+        this.render();
+      }
     }
 
     /**
@@ -166,10 +194,25 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
       }
 
       if (!this.selectedSessionValue) {
-        return `Sessions panel ready. No saved session selected. ${this.renderUsageLimitSuffix()}`;
+        return `${this.renderActiveProviderPrefix()}No saved session selected. ${this.renderUsageLimitSuffix()}`;
       }
 
-      return `Codex · ${this.renderUsageLimitSuffix()}`;
+      return `${this.renderActiveProviderPrefix()}${this.renderUsageLimitSuffix()}`;
+    }
+
+    /**
+     * Names the provider and the model new sessions will start on.
+     */
+    private renderActiveProviderPrefix(): string {
+      const providerLabel = this.activeProviderLabelValue;
+
+      if (!providerLabel) return "";
+
+      const modelLabel = this.activeModelLabelValue
+        ? `${providerLabel} · ${this.activeModelLabelValue}`
+        : `${providerLabel} · provider default`;
+
+      return `${escapeHtml(modelLabel)} · `;
     }
 
     /**

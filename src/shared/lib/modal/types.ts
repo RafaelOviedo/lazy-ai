@@ -1,6 +1,7 @@
 export enum ModalName {
   confirmDeleteSessionModal = "ConfirmDeleteSessionModal",
   helpInfoModal = "HelpInfoModal",
+  modelPickerModal = "ModelPickerModal",
   promptSessionModal = "PromptSessionModal",
   sessionPromptErrorModal = "SessionPromptErrorModal",
   startNewSessionModal = "StartNewSessionModal",

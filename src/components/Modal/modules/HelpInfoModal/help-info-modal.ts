@@ -139,6 +139,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
           <span class="keybindings-panel__key"><span style="color: #fff;">p</span> Prompt session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">i</span> Interrupt response</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">d</span> Delete session</span>
+          <span class="keybindings-panel__key"><span style="color: #fff;">m</span> Providers and models</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">q</span> Quit</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">?</span> Help</span>
         </div>

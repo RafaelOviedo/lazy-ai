@@ -1,5 +1,3 @@
-import { CodexProjectRepository } from "../../providers/codex/codex-project-repository.js";
-
 import { escapeHtml } from "../../shared/lib/html/index.js";
 
 import type { ProjectSummary } from "../../app/types/index.js";
@@ -19,7 +17,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
    */
   class ProjectsPanel extends window.HTMLElement {
     private projectPathValue = "";
-    private projectReader: ProjectReader = new CodexProjectRepository();
+    private projectReader: ProjectReader | null = null;
     private projects: ProjectSummary[] = [];
     private selectedProjectIndex = 0;
     private selectedSessionIndex = 0;
@@ -45,7 +43,6 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       this.addEventListener("focus", this.onFocus);
       this.addEventListener("blur", this.onBlur);
       this.addEventListener("keydown", this.onKeyDown);
-      void this.reload();
     }
 
     /**
@@ -102,16 +99,20 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Loads the latest projects and refreshes the panel.
      */
     async reload(): Promise<void> {
+      const projectReader = this.projectReader;
+
+      if (!projectReader) return;
+
       this.isLoading = true;
       this.render();
 
       try {
         this.loadError = null;
-        this.projects = await this.projectReader.listProjects();
+        this.projects = await projectReader.listProjects();
         this.selectedProjectIndex = this.getPreferredProjectIndex();
         this.syncProjectPathToSelection();
       } catch {
-        this.loadError = "Failed to load Codex projects.";
+        this.loadError = "Failed to load projects.";
         this.projects = [];
         this.selectedProjectIndex = 0;
       }

@@ -1,6 +1,7 @@
-import type { SessionSummary, UsageLimitSnapshot } from "../app/types/index.js";
-import { CodexSessionRepository } from "../providers/codex/codex-session-repository.js";
-import { CodexAppServerClient } from "../providers/codex/codex-app-server-client.js";
+import type { ModelOption, SessionSummary, UsageLimitSnapshot } from "../app/types/index.js";
+import { createProviderProfile, createUnavailableRuntimeClient } from "../app/registry/index.js";
+import { getActiveProvider, setActiveProvider } from "../app/store/active-provider.js";
+import { listProviderModels } from "../app/models/index.js";
 
 import { type SessionsPanelElement, type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
@@ -33,8 +34,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureModalDefined(window);
 
   const { closeModal, getModalConfig, openModal } = useModal();
-  const sessionReader = new CodexSessionRepository();
-  const appServerClient = new CodexAppServerClient();
+  const activeProvider = getActiveProvider();
+  const providerProfile = createProviderProfile(activeProvider.providerId, activeProvider.modelId);
+  const sessionReader = providerProfile.sessions;
+  const canDriveSessions = providerProfile.client !== null;
+  const appServerClient = providerProfile.client ?? createUnavailableRuntimeClient(providerProfile.label);
 
   document.body.innerHTML = `
     <div class="card">
@@ -115,7 +119,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const panels = [panel1, panel2, panel3, detailsPanelElement].filter((panel): panel is HTMLElement => panel !== null);
 
-  const initialProjectName = projectPath.split("/").filter(Boolean).at(-1) ?? projectPath;
+  const initialProjectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? projectPath;
   let selectedProjectPath = projectPath;
   let selectedProjectName = initialProjectName;
 
@@ -216,6 +220,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     detailsPanel.repository = sessionReader;
   }
 
+  function reportReadOnlyProvider(): void {
+    loadError = `${providerProfile.label} sessions are read-only in lazy-ai for now.`;
+    syncStatusPanel();
+  }
+
   if (sessionsPanel) {
     sessionsPanel.activeSessionId = sessionResumeController.getActiveSessionId();
   }
@@ -234,6 +243,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function syncStatusPanel() {
     if (!statusPanel) return;
 
+    statusPanel.activeProviderLabel = providerProfile.label;
+    statusPanel.activeModelLabel = activeProvider.modelLabel;
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;
@@ -305,6 +316,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const customEvent = event as CustomEvent<SessionResumeRequestDetail>;
     const requestedSession = customEvent.detail.session;
 
+    if (!canDriveSessions) {
+      reportReadOnlyProvider();
+      return;
+    }
+
     if (detailsPanel?.isConversationLoading) return;
     if (sessionResumeController.isSessionResuming(requestedSession.id)) return;
 
@@ -320,6 +336,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const customEvent = event as CustomEvent<SessionDeleteRequestDetail>;
     const requestedSession = customEvent.detail.session;
 
+    if (!canDriveSessions) {
+      reportReadOnlyProvider();
+      return;
+    }
+
     if (hasOngoingTurn()) return;
     if (sessionDeleteController.isSessionDeleting(requestedSession.id)) return;
 
@@ -334,6 +355,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openStartNewSessionModal() {
+    if (!canDriveSessions) {
+      reportReadOnlyProvider();
+      return;
+    }
+
     if (hasOngoingTurn()) return;
     if (sessionStartController.isSessionStarting()) return;
 
@@ -345,7 +371,27 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     });
   }
 
+  function openModelPickerModal() {
+    if (hasOngoingTurn()) return;
+
+    void listProviderModels().then((groups) => {
+      openModal(ModalName.modelPickerModal, {
+        activeProvider: getActiveProvider(),
+        groups,
+        onSelect: (model: ModelOption) => {
+          closeModal();
+          setActiveProvider({ modelId: model.id, modelLabel: model.label, providerId: model.providerId });
+        },
+      });
+    });
+  }
+
   function openPromptSessionModal() {
+    if (!canDriveSessions) {
+      reportReadOnlyProvider();
+      return;
+    }
+
     if (hasOngoingTurn()) return;
     if (sessionPromptController.isSessionPrompting()) return;
 
@@ -386,6 +432,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     if (getModalConfig().isActive) return;
     if (handleModalShortcuts(event, key)) return;
+    if (handleModelPickerShortcut(event, key)) return;
     if (handleInterruptSessionShortcut(event, key)) return;
     if (handleNewSessionShortcut(event, key)) return;
     if (handlePromptSessionShortcut(event, key)) return;
@@ -398,6 +445,14 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     event.preventDefault();
     openModal(ModalName.helpInfoModal);
+    return true;
+  }
+
+  function handleModelPickerShortcut(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.M) return false;
+
+    event.preventDefault();
+    openModelPickerModal();
     return true;
   }
 
@@ -481,11 +536,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   if (projectsPanel) {
     projectsPanel.projectPath = projectPath;
+    projectsPanel.repository = providerProfile.projects;
   }
 
   syncContextPanel();
 
   if (sessionsPanel) {
+    sessionsPanel.repository = sessionReader;
     sessionsPanel.projectPath = projectPath;
   }
 

@@ -1,4 +1,3 @@
-import { CodexSessionRepository } from "../../providers/codex/codex-session-repository.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { Keybindings } from "../../app/keybindings.types.js";
 
@@ -41,7 +40,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private interruptedSessionIdValue: string | null = null;
     private alreadyRunningSessionIdValue: string | null = null;
     private resumeFailedSessionIdValue: string | null = null;
-    private sessionReader: SessionReader = new CodexSessionRepository();
+    private sessionReader: SessionReader | null = null;
     private sessions: SessionSummary[] = [];
     private selectedSessionIndex = 0;
     private isLoading = true;
@@ -259,7 +258,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     set repository(value: SessionReader) {
       this.sessionReader = value;
 
-      if (this.isConnected) {
+      if (this.isConnected && this.projectPathValue) {
         void this.reload();
       }
     }
@@ -310,16 +309,20 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Loads the latest sessions for the active project and refreshes the panel.
      */
     async reload(): Promise<void> {
+      const sessionReader = this.sessionReader;
+
+      if (!sessionReader) return;
+
       this.isLoading = true;
       this.render();
 
       try {
         this.loadError = null;
-        this.sessions = await this.sessionReader.listByProject(this.projectPathValue);
+        this.sessions = await sessionReader.listByProject(this.projectPathValue);
         this.selectedSessionIndex = 0;
         this.promoteActiveSession(false);
       } catch {
-        this.loadError = "Failed to load Codex sessions.";
+        this.loadError = "Failed to load sessions.";
         this.sessions = [];
         this.selectedSessionIndex = 0;
       }
@@ -334,8 +337,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Refreshes one session from storage and reconciles its row without entering full-panel loading.
      */
     async syncSession(sessionId: string): Promise<SessionSummary | null> {
+      const sessionReader = this.sessionReader;
+
+      if (!sessionReader) return null;
+
       try {
-        const sessions = await this.sessionReader.listByProject(this.projectPathValue);
+        const sessions = await sessionReader.listByProject(this.projectPathValue);
         const session = sessions.find((candidateSession) => candidateSession.id === sessionId) ?? null;
 
         if (!session) return null;
@@ -345,7 +352,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
         return session;
       } catch {
-        this.loadError = "Failed to load Codex sessions.";
+        this.loadError = "Failed to load sessions.";
         this.dispatchSelectionChange();
 
         return null;

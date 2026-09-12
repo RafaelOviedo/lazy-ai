@@ -1,17 +1,14 @@
-import { CodexSessionRepository } from "./codex-session-repository.js";
-
-import type { ProjectSummary } from "../../app/types/index.js";
-import type { ProjectReader, SessionReader } from "../../app/ports/index.js";
-import type { CodexProjectRepositoryOptions } from "./types.js";
+import type { ProjectSummary } from "../types/index.js";
+import type { ProjectReader, SessionReader } from "../ports/index.js";
 
 /**
- * Builds a project list from persisted Codex session history.
+ * Builds a project list by grouping any provider's persisted session history.
  */
-export class CodexProjectRepository implements ProjectReader {
+export class SessionGroupingProjectReader implements ProjectReader {
   private readonly sessionReader: SessionReader;
 
-  constructor(options: CodexProjectRepositoryOptions = {}) {
-    this.sessionReader = options.sessionReader ?? new CodexSessionRepository();
+  constructor(sessionReader: SessionReader) {
+    this.sessionReader = sessionReader;
   }
 
   /**
@@ -22,10 +19,11 @@ export class CodexProjectRepository implements ProjectReader {
     const projects = new Map<string, ProjectSummary>();
 
     for (const session of sessions) {
-      const existingProject = projects.get(session.projectPath);
+      const projectKey = this.normalizeProjectPath(session.projectPath);
+      const existingProject = projects.get(projectKey);
 
       if (!existingProject) {
-        projects.set(session.projectPath, {
+        projects.set(projectKey, {
           path: session.projectPath,
           name: session.projectName,
           sessionCount: 1,
@@ -46,5 +44,12 @@ export class CodexProjectRepository implements ProjectReader {
     }
 
     return [...projects.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  /**
+   * Groups tolerantly because providers record separators and casing differently.
+   */
+  private normalizeProjectPath(projectPath: string): string {
+    return projectPath.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase();
   }
 }

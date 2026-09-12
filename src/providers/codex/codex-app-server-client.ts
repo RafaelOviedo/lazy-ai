@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 
+import type { CodexAppServerClientOptions } from "./types.js";
+
 type JsonRpcRequest = {
   id: number;
   method: string;
@@ -103,6 +105,7 @@ type TurnCompletedNotification = {
 };
 
 export class CodexAppServerClient {
+  private readonly model: string | null;
   private process: ChildProcessWithoutNullStreams | null = null;
   private stdoutReader: ReadlineInterface | null = null;
   private initializePromise: Promise<void> | null = null;
@@ -111,6 +114,10 @@ export class CodexAppServerClient {
   private pendingTurnCompletions = new Set<PendingTurnCompletion>();
   private completedTurns: CodexAppServerTurnCompletionResult[] = [];
   private stderrLines: string[] = [];
+
+  constructor(options: CodexAppServerClientOptions = {}) {
+    this.model = options.model ?? null;
+  }
 
   async resumeThread(threadId: string, cwd?: string): Promise<CodexAppServerResumeResult> {
     await this.initialize();
@@ -145,6 +152,8 @@ export class CodexAppServerClient {
       cwd,
       historyMode: "legacy",
       serviceName: "lazy-ai",
+      // Omitted entirely when unset so Codex applies its own configured default.
+      ...(this.model ? { model: this.model } : {}),
     });
 
     const threadId = result.thread?.id;

@@ -1,7 +1,5 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { renderMarkdown } from "../../shared/lib/markdown/index.js";
-import { CodexSessionRepository } from "../../providers/codex/codex-session-repository.js";
-
 import type { ConversationMessage, SessionSummary } from "../../app/types/index.js";
 import type { SessionReader } from "../../app/ports/index.js";
 import type { PendingSessionPrompt } from "../../shared/lib/sessions/index.js";
@@ -28,7 +26,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private pendingUserPromptInitialMatchCount = 0;
     private thinkingSessionIdValue: string | null = null;
     private interruptedSessionIdValue: string | null = null;
-    private sessionReader: SessionReader = new CodexSessionRepository();
+    private sessionReader: SessionReader | null = null;
     private messages: ConversationMessage[] = [];
     private isLoading = false;
     private loadError: string | null = null;
@@ -87,7 +85,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Returns the session reader used to load selected session details.
      */
-    get repository(): SessionReader {
+    get repository(): SessionReader | null {
       return this.sessionReader;
     }
 
@@ -202,8 +200,12 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         this.loadTimer = null;
       }
 
+      const sessionReader = this.sessionReader;
+
+      if (!sessionReader) return;
+
       try {
-        const conversation = await this.sessionReader.getConversation(sessionId);
+        const conversation = await sessionReader.getConversation(sessionId);
 
         if (loadVersion !== this.loadVersion || this.selectedSessionValue?.id !== sessionId) return;
 
@@ -556,8 +558,12 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     ): Promise<void> {
       if (loadVersion !== this.loadVersion) return;
 
+      const sessionReader = this.sessionReader;
+
+      if (!sessionReader) return;
+
       try {
-        const conversation = await this.sessionReader.getConversation(selectedSession.id);
+        const conversation = await sessionReader.getConversation(selectedSession.id);
 
         if (loadVersion !== this.loadVersion) return;
 
