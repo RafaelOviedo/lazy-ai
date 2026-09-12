@@ -100,10 +100,11 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
             padding: 1px;
           }
 
-          .keybindings-panel__moves {
+          .keybindings-modal__moves {
             border-bottom: 1px solid #fff;
           }
-          .keybindings-panel__actions {
+
+          .keybindings-modal__actions {
             margin-top: 1px;
             border-bottom: 1px solid #fff;
           }
@@ -116,7 +117,6 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
 
           .keybindings-modal__key {
             color: #5fafff;
-            font-weight: bold;
           }
 
           .keybindings-modal__description {
@@ -126,22 +126,22 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
 
         <legend>${escapeHtml(title)}</legend>
         <div class="keybindings-modal__content">
-          <span class="keybindings-panel__moves">Moves</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">h</span> Previous panel</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">l</span> Next panel</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">j</span> Next item</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">k</span> Previous item</span>
+          <span class="keybindings-modal__moves">Moves</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">h</span> Previous panel</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">l</span> Next panel</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">j</span> Next item</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">k</span> Previous item</span>
 
-          <span class="keybindings-panel__actions">Actions</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">Space</span> Resume session (Sessions panel)</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">Space</span> Select project (Projects panel)</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">n</span> New session</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">p</span> Prompt session</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">i</span> Interrupt response</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">d</span> Delete session</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">m</span> Providers and models</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">q</span> Quit</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">?</span> Keybindings</span>
+          <span class="keybindings-modal__actions">Actions</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">Space</span> Resume session (Sessions panel)</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">Space</span> Select project (Projects panel)</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">n</span> New session</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">p</span> Prompt session</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">i</span> Interrupt response</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">d</span> Delete session</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">m</span> Providers and models</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">q</span> Quit</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">?</span> Keybindings</span>
         </div>
       `;
     }
