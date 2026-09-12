@@ -1,8 +1,7 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
-import { Keybindings } from "../../app/keybindings.types.js";
+import { Keybindings } from "../../shared/config/keybindings.js";
 
-import type { SessionSummary } from "../../app/types/index.js";
-import type { SessionReader } from "../../app/ports/index.js";
+import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
 
 import { SessionDeleteRequestDetail, SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
 

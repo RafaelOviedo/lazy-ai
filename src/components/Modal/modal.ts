@@ -1,6 +1,6 @@
 import { useModal } from "../../composables/useModal.js";
 import { ModalName } from "../../shared/lib/modal/index.js";
-import { Keybindings } from "../../app/keybindings.types.js";
+import { Keybindings } from "../../shared/config/keybindings.js";
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureKeybindingsModalDefined } from "./modules/KeybindingsModal/keybindings-modal.js";
 import { ensureModelPickerModalDefined } from "./modules/ModelPickerModal/model-picker-modal.js";

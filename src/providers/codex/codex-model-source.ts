@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { ModelOption } from "../../app/types/index.js";
+import type { ModelOption } from "../../entities/ai-model/index.js";
 import type { CodexModelSourceOptions, CodexModelsCacheEntry } from "./types.js";
 
 const listedVisibility = "list";

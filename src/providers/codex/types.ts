@@ -1,5 +1,5 @@
-import type { ContextUsage, UsageLimit } from "../../app/types/index.js";
-import type { SessionReader } from "../../app/ports/index.js";
+import type { UsageLimit } from "../../entities/provider/index.js";
+import type { ContextUsage, SessionReader } from "../../entities/session/index.js";
 
 export type CodexSessionRepositoryOptions = {
   codexRootPath?: string;

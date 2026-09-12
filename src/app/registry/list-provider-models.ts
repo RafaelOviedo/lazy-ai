@@ -1,8 +1,8 @@
 import { ClaudeModelSource } from "../../providers/claude/claude-model-source.js";
 import { CodexModelSource } from "../../providers/codex/codex-model-source.js";
-import { providerLabels } from "../registry/index.js";
+import { providerLabels } from "./provider-registry.js";
 
-import type { ProviderModelGroup } from "../types/index.js";
+import type { ProviderModelGroup } from "../../entities/ai-model/index.js";
 
 /**
  * Collects the selectable models of every provider installed on this machine.

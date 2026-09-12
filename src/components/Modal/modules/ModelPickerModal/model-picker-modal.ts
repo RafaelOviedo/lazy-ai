@@ -1,7 +1,7 @@
 import { escapeHtml } from "../../../../shared/lib/html/index.js";
-import { Keybindings } from "../../../../app/keybindings.types.js";
+import { Keybindings } from "../../../../shared/config/keybindings.js";
 
-import type { ModelOption } from "../../../../app/types/index.js";
+import type { ModelOption } from "../../../../entities/ai-model/index.js";
 import type { TermWindow } from "../../types.js";
 import type { ModelPickerModalPayload } from "./types.js";
 

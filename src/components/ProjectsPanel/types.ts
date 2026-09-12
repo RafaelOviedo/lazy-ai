@@ -1,7 +1,6 @@
 import type { TermDOM } from "@b9g/termdom";
 
-import type { ProjectSummary } from "../../app/types/index.js";
-import type { ProjectReader } from "../../app/ports/index.js";
+import type { ProjectReader, ProjectSummary } from "../../entities/project/index.js";
 
 export type TermWindow = TermDOM["window"];
 

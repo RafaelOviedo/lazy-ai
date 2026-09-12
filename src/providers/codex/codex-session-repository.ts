@@ -2,15 +2,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
-import type {
-  ConversationMessage,
-  ConversationRole,
-  SessionConversation,
-  SessionSummary,
-  UsageLimit,
-  UsageLimitSnapshot,
-} from "../../app/types/index.js";
-import type { SessionReader } from "../../app/ports/index.js";
+import type { UsageLimit, UsageLimitSnapshot } from "../../entities/provider/index.js";
+import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
 import type {
   CodexSessionRepositoryOptions,
   SessionContext,

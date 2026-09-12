@@ -1,7 +1,8 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { getTokenBarSegments } from "../../shared/lib/tokens/index.js";
 
-import type { SessionSummary, UsageLimitSnapshot, UsageLimitWindow } from "../../app/types/index.js";
+import type { UsageLimitSnapshot, UsageLimitWindow } from "../../entities/provider/index.js";
+import type { SessionSummary } from "../../entities/session/index.js";
 import type { TermWindow } from "./types.js";
 
 /**

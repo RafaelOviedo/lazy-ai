@@ -1,6 +1,6 @@
-import type { ProviderId } from "../types/provider.js";
-import type { ProjectReader } from "./project-reader.js";
-import type { SessionReader } from "./session-reader.js";
+import type { ProviderId } from "./types.js";
+import type { ProjectReader } from "../project/api.js";
+import type { SessionReader } from "../session/api.js";
 
 /**
  * Drives live turns for one provider. Null on a provider that can only be read.

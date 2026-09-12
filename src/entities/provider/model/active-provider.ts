@@ -1,4 +1,4 @@
-import type { ProviderId } from "../types/index.js";
+import type { ProviderId } from "../types.js";
 
 export type ActiveProviderSelection = {
   modelId: string | null;

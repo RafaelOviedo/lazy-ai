@@ -1,3 +1,5 @@
+export type ProviderId = "claude-code" | "codex";
+
 export type UsageLimit = {
   limitId?: string;
   limitName?: string | null;

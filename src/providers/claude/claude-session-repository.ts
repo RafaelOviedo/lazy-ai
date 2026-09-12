@@ -2,14 +2,8 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { homedir } from "node:os";
 
-import type {
-  ConversationMessage,
-  ConversationRole,
-  SessionConversation,
-  SessionSummary,
-  UsageLimitSnapshot,
-} from "../../app/types/index.js";
-import type { SessionReader } from "../../app/ports/index.js";
+import type { UsageLimitSnapshot } from "../../entities/provider/index.js";
+import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
 import type {
   ClaudeSessionContext,
   ClaudeSessionRepositoryOptions,

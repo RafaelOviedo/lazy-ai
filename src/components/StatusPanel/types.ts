@@ -1,6 +1,7 @@
 import type { TermDOM } from "@b9g/termdom";
 
-import type { SessionSummary, UsageLimitSnapshot } from "../../app/types/index.js";
+import type { UsageLimitSnapshot } from "../../entities/provider/index.js";
+import type { SessionSummary } from "../../entities/session/index.js";
 
 export type TermWindow = TermDOM["window"];
 

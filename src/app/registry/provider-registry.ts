@@ -5,10 +5,9 @@ import { join } from "node:path";
 import { ClaudeSessionRepository } from "../../providers/claude/claude-session-repository.js";
 import { CodexAppServerClient } from "../../providers/codex/codex-app-server-client.js";
 import { CodexSessionRepository } from "../../providers/codex/codex-session-repository.js";
-import { SessionGroupingProjectReader } from "../readers/index.js";
+import { SessionGroupingProjectReader } from "../../entities/project/index.js";
 
-import type { ProviderProfile } from "../ports/index.js";
-import type { ProviderId } from "../types/index.js";
+import type { ProviderId, ProviderProfile } from "../../entities/provider/index.js";
 
 export const providerLabels: Record<ProviderId, string> = {
   "claude-code": "Claude Code",

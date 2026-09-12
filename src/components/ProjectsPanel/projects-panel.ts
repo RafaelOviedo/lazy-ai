@@ -1,8 +1,7 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
-import { Keybindings } from "../../app/keybindings.types.js";
+import { Keybindings } from "../../shared/config/keybindings.js";
 
-import type { ProjectSummary } from "../../app/types/index.js";
-import type { ProjectReader } from "../../app/ports/index.js";
+import type { ProjectReader, ProjectSummary } from "../../entities/project/index.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
 
 /**

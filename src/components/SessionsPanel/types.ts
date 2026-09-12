@@ -1,6 +1,5 @@
 import { TermDOM } from "@b9g/termdom";
-import type { SessionSummary } from "../../app/types/index.js";
-import type { SessionReader } from "../../app/ports/index.js";
+import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
 
 export type TermWindow = TermDOM["window"];
 

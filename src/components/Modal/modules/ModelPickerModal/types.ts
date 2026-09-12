@@ -1,5 +1,5 @@
-import type { ModelOption, ProviderModelGroup } from "../../../../app/types/index.js";
-import type { ActiveProviderSelection } from "../../../../app/store/active-provider.js";
+import type { ModelOption, ProviderModelGroup } from "../../../../entities/ai-model/index.js";
+import type { ActiveProviderSelection } from "../../../../entities/provider/index.js";
 
 export type ModelPickerModalPayload = {
   activeProvider: ActiveProviderSelection;

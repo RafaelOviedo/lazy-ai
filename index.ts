@@ -3,7 +3,7 @@ import { renderHome } from './src/pages/index.js';
 
 import { RoutesNames } from './src/pages/types.js';
 import { detectAvailableProviders } from './src/app/registry/index.js';
-import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from './src/app/store/active-provider.js';
+import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from "./src/entities/provider/index.js";
 
 const projectPath = process.cwd();
 const term = new TermDOM();

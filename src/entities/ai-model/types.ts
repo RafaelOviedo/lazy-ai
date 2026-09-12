@@ -1,4 +1,4 @@
-import type { ProviderId } from "./provider.js";
+import type { ProviderId } from "../provider/types.js";
 
 export type ModelOption = {
   id: string;

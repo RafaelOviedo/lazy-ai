@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../../app/types/index.js";
+import type { SessionSummary } from "../../entities/session/index.js";
 import type { TermWindow } from "./types.js";
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { formatTokenCount, getTokenBarSegments } from "../../shared/lib/tokens/index.js";

@@ -1,4 +1,4 @@
-import type { ContextUsage } from "../../app/types/index.js";
+import type { ContextUsage } from "../../entities/session/index.js";
 
 export type ClaudeModelSourceOptions = {
   configPath?: string;

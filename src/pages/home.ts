@@ -1,17 +1,18 @@
-import type { ModelOption, SessionSummary, UsageLimitSnapshot } from "../app/types/index.js";
-import { createProviderProfile, createUnavailableRuntimeClient } from "../app/registry/index.js";
-import { getActiveProvider, setActiveProvider } from "../app/store/active-provider.js";
-import { listProviderModels, resolveDefaultModel } from "../app/models/index.js";
+import type { ModelOption } from "../entities/ai-model/index.js";
+import type { UsageLimitSnapshot } from "../entities/provider/index.js";
+import type { SessionSummary } from "../entities/session/index.js";
+import { createProviderProfile, createUnavailableRuntimeClient, listProviderModels, resolveDefaultModel } from "../app/registry/index.js";
+import { getActiveProvider, setActiveProvider } from "../entities/provider/index.js";
 
-import { type SessionsPanelElement, type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
-import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
+import { type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail, type SessionsPanelElement } from "../components/SessionsPanel/types.js";
+import { type ProjectSelectionChangeDetail, type ProjectsPanelElement } from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
 import { type StatusPanelElement } from "../components/StatusPanel/types.js";
 import { type KeybindingsPanelElement } from "../components/KeybindingsPanel/types.js";
 
 import { PageProps } from "./types.js";
-import { Keybindings } from "../app/keybindings.types.js";
+import { Keybindings } from "../shared/config/keybindings.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";

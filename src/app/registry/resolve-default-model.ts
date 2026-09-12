@@ -1,7 +1,8 @@
 import { ClaudeModelSource } from "../../providers/claude/claude-model-source.js";
 import { CodexModelSource } from "../../providers/codex/codex-model-source.js";
 
-import type { ModelOption, ProviderId } from "../types/index.js";
+import type { ModelOption } from "../../entities/ai-model/index.js";
+import type { ProviderId } from "../../entities/provider/index.js";
 
 /**
  * Resolves the model a provider starts new sessions on when lazy-ai sends no

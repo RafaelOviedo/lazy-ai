@@ -1,5 +1,4 @@
-import type { ContextUsage } from "./context.js";
-import type { UsageLimit } from "./usage.js";
+import type { UsageLimit } from "../provider/types.js";
 
 export type SessionSummary = {
   id: string;
@@ -12,6 +11,12 @@ export type SessionSummary = {
   contextUsage?: ContextUsage;
   usageLimit?: UsageLimit;
   status: string;
+};
+
+export type ContextUsage = {
+  usedTokens: number;
+  maxTokens: number;
+  percent: number;
 };
 
 export type SessionConversation = {
