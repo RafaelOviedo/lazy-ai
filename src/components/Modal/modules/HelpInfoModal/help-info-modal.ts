@@ -134,7 +134,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
           <span class="keybindings-panel__key"><span style="color: #fff;">k</span> Previous item</span>
 
           <span class="keybindings-panel__actions">Actions</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">Space</span> Resume session</span>
+          <span class="keybindings-panel__key"><span style="color: #fff;">Space</span> Select project / resume session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">n</span> New session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">p</span> Prompt session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">i</span> Interrupt response</span>

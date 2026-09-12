@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import { Keybindings } from "../../app/keybindings.types.js";
 
 import type { ProjectSummary } from "../../app/types/index.js";
 import type { ProjectReader } from "../../app/ports/index.js";
@@ -17,10 +18,10 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
    */
   class ProjectsPanel extends window.HTMLElement {
     private projectPathValue = "";
+    private currentProjectPathValue = "";
     private projectReader: ProjectReader | null = null;
     private projects: ProjectSummary[] = [];
     private selectedProjectIndex = 0;
-    private selectedSessionIndex = 0;
     private isLoading = true;
     private loadError: string | null = null;
 
@@ -64,6 +65,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       if (this.isConnected && !this.isLoading && this.projects.length > 0) {
         this.selectedProjectIndex = this.getPreferredProjectIndex();
+        this.syncProjectPathToSelection();
         this.render();
         this.revealSelectedProject();
         this.dispatchSelectionChange();
@@ -188,6 +190,10 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
             color: #8aa4bf;
           }
 
+          .projects-panel__status-current {
+            color: #43B53E;
+          }
+
           .projects-panel__counter {
             display: flex;
             justify-content: flex-end;
@@ -212,8 +218,23 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       this.selectedProjectIndex =
         (this.selectedProjectIndex + direction + this.projects.length) % this.projects.length;
-      this.syncProjectPathToSelection();
 
+      // Browsing only. Loading this project's sessions waits for an explicit
+      // commit, so holding j/k does not queue a reload per keypress.
+      this.render();
+      this.revealSelectedProject();
+    }
+
+    /**
+     * Makes the highlighted project the one the rest of the layout reads from.
+     */
+    private commitSelectedProject(): void {
+      const selectedProject = this.selectedProject;
+
+      if (!selectedProject) return;
+      if (this.currentProjectPathValue === selectedProject.path) return;
+
+      this.syncProjectPathToSelection();
       this.render();
       this.revealSelectedProject();
       this.dispatchSelectionChange();
@@ -234,14 +255,20 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     private onKeyDown(event: KeyboardEvent): void {
       const key = event.key.toLowerCase();
 
-      if (key === "j" || key === "arrowdown") {
+      if (key === Keybindings.J || key === "arrowdown") {
         this.moveSelection(1);
         event.preventDefault();
         return;
       }
 
-      if (key === "k" || key === "arrowup") {
+      if (key === Keybindings.K || key === "arrowup") {
         this.moveSelection(-1);
+        event.preventDefault();
+        return;
+      }
+
+      if (event.key === Keybindings.SPACE) {
+        this.commitSelectedProject();
         event.preventDefault();
       }
     }
@@ -267,9 +294,20 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       if (this.projects.length === 0) return 0;
       if (!this.projectPathValue) return 0;
 
-      const projectIndex = this.projects.findIndex((project) => project.path === this.projectPathValue);
+      const preferredPath = this.normalizeProjectPath(this.projectPathValue);
+      const projectIndex = this.projects.findIndex((project) => {
+        return this.normalizeProjectPath(project.path) === preferredPath;
+      });
 
       return projectIndex === -1 ? 0 : projectIndex;
+    }
+
+    /**
+     * Matches tolerantly because the shell, Codex, and Claude Code all record
+     * the same workspace with different separators and casing.
+     */
+    private normalizeProjectPath(projectPath: string): string {
+      return projectPath.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase();
     }
 
     /**
@@ -280,6 +318,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       if (selectedProject) {
         this.projectPathValue = selectedProject.path;
+        this.currentProjectPathValue = selectedProject.path;
       }
     }
 
@@ -322,10 +361,13 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
         const marker = index === this.selectedProjectIndex ? "◉" : "○";
         const selectedClass = index === this.selectedProjectIndex ? "projects-panel__item is-selected" : "projects-panel__item";
         const selectedAttribute = index === this.selectedProjectIndex ? ' data-selected="true"' : "";
+        const currentLabel = project.path === this.currentProjectPathValue
+          ? ` · <span class="projects-panel__status-current">Current</span>`
+          : "";
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
-            <div><span>${marker}</span> <span class="projects-panel__item-name">${escapeHtml(project.name)}</span> <span class="projects-panel__meta">${project.sessionCount} sessions · ${escapeHtml(project.relativeUpdated)}</span></div>
+            <div><span>${marker}</span> <span class="projects-panel__item-name">${escapeHtml(project.name)}</span> <span class="projects-panel__meta">${project.sessionCount} sessions · ${escapeHtml(project.relativeUpdated)}${currentLabel}</span></div>
           </div>
         `;
       })
@@ -340,7 +382,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       if (this.loadError) return "Error";
       if (this.projects.length === 0) return "(0)";
 
-      return `(${this.selectedSessionIndex + 1}/${this.projects.length})`;
+      return `(${this.selectedProjectIndex + 1}/${this.projects.length})`;
     }
 
   }
