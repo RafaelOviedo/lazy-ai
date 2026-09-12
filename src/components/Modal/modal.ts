@@ -2,7 +2,7 @@ import { useModal } from "../../composables/useModal.js";
 import { ModalName } from "../../shared/lib/modal/index.js";
 import { Keybindings } from "../../app/keybindings.types.js";
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
-import { ensureHelpInfoModalDefined } from "./modules/HelpInfoModal/help-info-modal.js";
+import { ensureKeybindingsModalDefined } from "./modules/KeybindingsModal/keybindings-modal.js";
 import { ensureModelPickerModalDefined } from "./modules/ModelPickerModal/model-picker-modal.js";
 import { ensurePromptSessionModalDefined } from "./modules/PromptSessionModal/prompt-session-modal.js";
 import { ensureSessionPromptErrorModalDefined } from "./modules/SessionPromptErrorModal/session-prompt-error-modal.js";
@@ -13,14 +13,14 @@ import type { ModalComponentDefinition, ModalElement, TermWindow } from "./types
 
 const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
   [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
-  [ModalName.helpInfoModal]: { tagName: "help-info-modal", define: ensureHelpInfoModalDefined },
+  [ModalName.keybindingsModal]: { tagName: "keybindings-modal", define: ensureKeybindingsModalDefined },
   [ModalName.modelPickerModal]: { tagName: "model-picker-modal", define: ensureModelPickerModalDefined },
   [ModalName.promptSessionModal]: { tagName: "prompt-session-modal", define: ensurePromptSessionModalDefined },
   [ModalName.sessionPromptErrorModal]: { tagName: "session-prompt-error-modal", define: ensureSessionPromptErrorModalDefined },
   [ModalName.startNewSessionModal]: { tagName: "start-new-session-modal", define: ensureStartNewSessionModalDefined },
 };
 
-const defaultPreloadedModal = ModalName.helpInfoModal;
+const defaultPreloadedModal = ModalName.keybindingsModal;
 
 /**
  * Registers the app modal root custom element against a TermDOM window.

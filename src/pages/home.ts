@@ -473,7 +473,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!isPlainKeyEvent(event) || key !== Keybindings.QUESTION_MARK) return false;
 
     event.preventDefault();
-    openModal(ModalName.helpInfoModal);
+    openModal(ModalName.keybindingsModal);
     return true;
   }
 

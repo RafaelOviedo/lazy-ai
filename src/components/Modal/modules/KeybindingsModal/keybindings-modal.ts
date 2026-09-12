@@ -1,22 +1,22 @@
 import { escapeHtml } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
-import type { HelpInfoModalPayload } from "./types.js";
+import type { KeybindingsModalPayload } from "./types.js";
 
 /**
- * Registers the help info modal custom element against a TermDOM window.
+ * Registers the keybindings modal custom element against a TermDOM window.
  */
-export function ensureHelpInfoModalDefined(window: TermWindow): void {
-  if (window.customElements.get("help-info-modal")) {
+export function ensureKeybindingsModalDefined(window: TermWindow): void {
+  if (window.customElements.get("keybindings-modal")) {
     return;
   }
 
   /**
    * Renders keyboard-oriented help information.
    */
-  class HelpInfoModal extends window.HTMLElement {
+  class KeybindingsModal extends window.HTMLElement {
     private closeModalValue: () => void = () => { };
-    private payloadValue: HelpInfoModalPayload | undefined;
+    private payloadValue: KeybindingsModalPayload | undefined;
 
     /**
      * Initializes the modal markup and event delegation.
@@ -34,7 +34,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
     /**
      * Updates the modal payload.
      */
-    set payload(value: HelpInfoModalPayload | undefined) {
+    set payload(value: KeybindingsModalPayload | undefined) {
       if (this.payloadValue === value) return;
 
       this.payloadValue = value;
@@ -47,7 +47,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
     /**
      * Returns the modal payload.
      */
-    get payload(): HelpInfoModalPayload | undefined {
+    get payload(): KeybindingsModalPayload | undefined {
       return this.payloadValue;
     }
 
@@ -73,7 +73,7 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
 
       this.innerHTML = `
         <style>
-          help-info-modal {
+          keybindings-modal {
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
@@ -84,22 +84,21 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
             border-radius: 5px;
           }
 
-          .help-info-modal__close {
+          .keybindings-modal__close {
             align-self: flex-end;
           }
 
-          .help-info-modal__title {
+          .keybindings-modal__title {
             color: #d7ecff;
             font-weight: bold;
             text-align: center;
           }
 
-          .help-info-modal__content {
+          .keybindings-modal__content {
             display: flex;
             flex-direction: column;
             padding: 1px;
           }
-
 
           .keybindings-panel__moves {
             border-bottom: 1px solid #fff;
@@ -109,24 +108,24 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
             border-bottom: 1px solid #fff;
           }
 
-          .help-info-modal__row {
+          .keybindings-modal__row {
             display: flex;
             justify-content: space-between;
             width: 100%;
           }
 
-          .help-info-modal__key {
+          .keybindings-modal__key {
             color: #5fafff;
             font-weight: bold;
           }
 
-          .help-info-modal__description {
+          .keybindings-modal__description {
             color: #8aa4bf;
           }
         </style>
 
         <legend>${escapeHtml(title)}</legend>
-        <div class="help-info-modal__content">
+        <div class="keybindings-modal__content">
           <span class="keybindings-panel__moves">Moves</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">h</span> Previous panel</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">l</span> Next panel</span>
@@ -142,11 +141,11 @@ export function ensureHelpInfoModalDefined(window: TermWindow): void {
           <span class="keybindings-panel__key"><span style="color: #fff;">d</span> Delete session</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">m</span> Providers and models</span>
           <span class="keybindings-panel__key"><span style="color: #fff;">q</span> Quit</span>
-          <span class="keybindings-panel__key"><span style="color: #fff;">?</span> Help</span>
+          <span class="keybindings-panel__key"><span style="color: #fff;">?</span> Keybindings</span>
         </div>
       `;
     }
   }
 
-  window.customElements.define("help-info-modal", HelpInfoModal);
+  window.customElements.define("keybindings-modal", KeybindingsModal);
 }
