@@ -2,6 +2,7 @@ import type { ContextUsage } from "../../app/types/index.js";
 
 export type ClaudeModelSourceOptions = {
   configPath?: string;
+  settingsPath?: string;
 };
 
 export type ClaudeModelAccessEntry = {

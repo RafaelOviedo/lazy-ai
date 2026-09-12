@@ -1,7 +1,7 @@
 import type { ModelOption, SessionSummary, UsageLimitSnapshot } from "../app/types/index.js";
 import { createProviderProfile, createUnavailableRuntimeClient } from "../app/registry/index.js";
 import { getActiveProvider, setActiveProvider } from "../app/store/active-provider.js";
-import { listProviderModels } from "../app/models/index.js";
+import { listProviderModels, resolveDefaultModel } from "../app/models/index.js";
 
 import { type SessionsPanelElement, type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail } from "../components/SessionsPanel/types.js";
 import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "../components/ProjectsPanel/types.js";
@@ -130,6 +130,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   let loadError: string | null = null;
   let projectLoadError: string | null = null;
+  let defaultModelLabel: string | null = null;
 
   panel1?.focus();
 
@@ -259,7 +260,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!statusPanel) return;
 
     statusPanel.activeProviderLabel = providerProfile.label;
-    statusPanel.activeModelLabel = activeProvider.modelLabel;
+    statusPanel.activeModelLabel = activeProvider.modelLabel ?? defaultModelLabel;
+    statusPanel.activeModelIsDefault = !activeProvider.modelId;
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;
@@ -305,6 +307,18 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     void refreshUsageLimit();
     syncContextPanel();
     renderPanels();
+  }
+
+  async function refreshDefaultModelLabel() {
+    if (activeProvider.modelId) return;
+
+    try {
+      defaultModelLabel = (await resolveDefaultModel(activeProvider.providerId))?.label ?? null;
+    } catch {
+      defaultModelLabel = null;
+    }
+
+    syncStatusPanel();
   }
 
   async function refreshUsageLimit() {
@@ -563,6 +577,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     sessionsPanel.projectPath = projectPath;
   }
 
+  void refreshDefaultModelLabel();
   void refreshUsageLimit();
 
   renderPanels();

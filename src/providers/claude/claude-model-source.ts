@@ -18,9 +18,78 @@ const modelFamilyOrder = ["opus", "sonnet", "haiku", "fable"];
  */
 export class ClaudeModelSource {
   private readonly configPath: string;
+  private readonly settingsPath: string;
 
   constructor(options: ClaudeModelSourceOptions = {}) {
     this.configPath = options.configPath ?? join(homedir(), ".claude.json");
+    this.settingsPath = options.settingsPath ?? join(homedir(), ".claude", "settings.json");
+  }
+
+  /**
+   * Resolves the model Claude Code would start on: an enforced org default, then
+   * the user's configured model, then the newest entitled model.
+   */
+  async getDefaultModel(): Promise<ModelOption | null> {
+    const models = await this.listModels();
+
+    if (models.length === 0) return null;
+
+    const [orgDefault, configuredModel] = await Promise.all([
+      this.readEnforcedOrgModel(),
+      this.readConfiguredModel(),
+    ]);
+
+    return this.matchModel(models, orgDefault)
+      ?? this.matchModel(models, configuredModel)
+      ?? models[0];
+  }
+
+  /**
+   * Matches a wire id or a family alias such as `opus` or `opus[1m]`.
+   */
+  private matchModel(models: ModelOption[], candidate: string | null): ModelOption | undefined {
+    if (!candidate) return undefined;
+
+    const exactMatch = models.find((model) => model.id === candidate);
+
+    if (exactMatch) return exactMatch;
+
+    const alias = candidate.replace(/\[.*\]$/, "").toLowerCase();
+
+    return models.find((model) => model.label.toLowerCase().startsWith(alias));
+  }
+
+  /**
+   * Reads the user's configured model from Claude Code settings.
+   */
+  private async readConfiguredModel(): Promise<string | null> {
+    try {
+      const file = await readFile(this.settingsPath, "utf8");
+      const parsed = JSON.parse(file) as { model?: unknown };
+
+      return typeof parsed.model === "string" ? parsed.model : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reads an org-configured model only when it overrides the user's choice.
+   */
+  private async readEnforcedOrgModel(): Promise<string | null> {
+    try {
+      const file = await readFile(this.configPath, "utf8");
+      const parsed = JSON.parse(file) as {
+        orgModelDefaultCache?: { name?: unknown; override_user_selection?: unknown };
+      };
+      const orgDefault = parsed.orgModelDefaultCache;
+
+      if (orgDefault?.override_user_selection !== true) return null;
+
+      return typeof orgDefault.name === "string" ? orgDefault.name : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

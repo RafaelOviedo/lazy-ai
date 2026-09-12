@@ -18,6 +18,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
   class StatusPanel extends window.HTMLElement {
     private activeProviderLabelValue = "";
     private activeModelLabelValue: string | null = null;
+    private activeModelIsDefaultValue = false;
     private loadErrorValue: string | null = null;
     private projectLoadErrorValue: string | null = null;
     private selectedSessionValue: SessionSummary | null = null;
@@ -50,6 +51,19 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
       if (this.activeModelLabelValue === value) return;
 
       this.activeModelLabelValue = value;
+
+      if (this.isConnected) {
+        this.render();
+      }
+    }
+
+    /**
+     * Marks whether the shown model came from the provider rather than the picker.
+     */
+    set activeModelIsDefault(value: boolean) {
+      if (this.activeModelIsDefaultValue === value) return;
+
+      this.activeModelIsDefaultValue = value;
 
       if (this.isConnected) {
         this.render();
@@ -208,11 +222,13 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
 
       if (!providerLabel) return "";
 
-      const modelLabel = this.activeModelLabelValue
-        ? `${providerLabel} · ${this.activeModelLabelValue}`
-        : `${providerLabel} · provider default`;
+      if (!this.activeModelLabelValue) {
+        return `${escapeHtml(providerLabel)} · `;
+      }
 
-      return `${escapeHtml(modelLabel)} · `;
+      const defaultSuffix = this.activeModelIsDefaultValue ? " (default)" : "";
+
+      return `${escapeHtml(`${providerLabel} · ${this.activeModelLabelValue}${defaultSuffix}`)} · `;
     }
 
     /**

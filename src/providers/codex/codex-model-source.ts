@@ -12,12 +12,56 @@ const lowestPriority = Number.MAX_SAFE_INTEGER;
  * Reads the model list Codex caches on disk so the picker opens without spawning the CLI.
  */
 export class CodexModelSource {
+  private readonly configPath: string;
   private readonly modelsCachePath: string;
 
   constructor(options: CodexModelSourceOptions = {}) {
     const codexRootPath = options.codexRootPath ?? join(homedir(), ".codex");
 
+    this.configPath = join(codexRootPath, "config.toml");
     this.modelsCachePath = join(codexRootPath, "models_cache.json");
+  }
+
+  /**
+   * Resolves the model Codex would pick when lazy-ai sends no override: the
+   * configured model if the user pinned one, otherwise Codex's own top-ranked
+   * listed model.
+   */
+  async getDefaultModel(): Promise<ModelOption | null> {
+    const models = await this.listModels();
+
+    if (models.length === 0) return null;
+
+    const configuredSlug = await this.readConfiguredModelSlug();
+    const configuredModel = configuredSlug
+      ? models.find((model) => model.id === configuredSlug)
+      : undefined;
+
+    return configuredModel ?? models[0];
+  }
+
+  /**
+   * Reads the top-level `model` key from config.toml, ignoring per-section keys.
+   */
+  private async readConfiguredModelSlug(): Promise<string | null> {
+    try {
+      const file = await readFile(this.configPath, "utf8");
+
+      for (const line of file.split("\n")) {
+        const trimmedLine = line.trim();
+
+        // Only the preamble applies globally; stop at the first table header.
+        if (trimmedLine.startsWith("[")) break;
+
+        const match = trimmedLine.match(/^model\s*=\s*["']([^"']+)["']/);
+
+        if (match) return match[1];
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /**
