@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, relative } from "node:path";
 import { homedir } from "node:os";
 
 import type {
@@ -49,7 +49,21 @@ export class ClaudeSessionRepository implements SessionReader {
   private resolveScanRoot(projectPath?: string): string {
     if (!projectPath) return this.projectsDirectoryPath;
 
-    return join(this.projectsDirectoryPath, projectPath.replace(/[^a-zA-Z0-9]/g, "-"));
+    return join(this.projectsDirectoryPath, this.encodeProjectDirectory(projectPath));
+  }
+
+  /**
+   * Mirrors the slug Claude Code uses for a workspace directory name.
+   */
+  private encodeProjectDirectory(projectPath: string): string {
+    return projectPath.replace(/[^a-zA-Z0-9]/g, "-");
+  }
+
+  /**
+   * Returns the project directory a transcript lives under.
+   */
+  private readProjectDirectoryName(filePath: string): string {
+    return relative(this.projectsDirectoryPath, filePath).split(/[\\/]/)[0] ?? "";
   }
 
   /**
@@ -126,6 +140,13 @@ export class ClaudeSessionRepository implements SessionReader {
       const file = await readFile(filePath, "utf8");
       const sessionContext: ClaudeSessionContext = { updatedAt: fileStats.mtime.toISOString() };
       let firstUserPrompt: string | undefined;
+      let fallbackCwd: string | undefined;
+
+      // Claude Code slugs each workspace into its own directory, so the folder
+      // holding this transcript is the authoritative project. A session's `cwd`
+      // follows the shell into subdirectories mid-run, which would otherwise
+      // scatter one project across several phantom entries.
+      const projectDirectoryName = this.readProjectDirectoryName(filePath);
 
       for (const line of file.split("\n")) {
         // Transcripts are dominated by large tool-result records. Only parse the
@@ -136,7 +157,14 @@ export class ClaudeSessionRepository implements SessionReader {
 
         if (!record) continue;
 
-        sessionContext.cwd = sessionContext.cwd ?? record.cwd;
+        if (!sessionContext.cwd && record.cwd) {
+          fallbackCwd = fallbackCwd ?? record.cwd;
+
+          if (this.encodeProjectDirectory(record.cwd) === projectDirectoryName) {
+            sessionContext.cwd = record.cwd;
+          }
+        }
+
         sessionContext.sessionId = sessionContext.sessionId ?? record.sessionId;
 
         if (record.type === "ai-title" && record.aiTitle?.trim()) {
@@ -160,6 +188,7 @@ export class ClaudeSessionRepository implements SessionReader {
       }
 
       sessionContext.title = sessionContext.title ?? firstUserPrompt;
+      sessionContext.cwd = sessionContext.cwd ?? fallbackCwd;
 
       this.sessionContextCache.set(filePath, { context: sessionContext, modifiedAtMs: fileStats.mtimeMs });
 

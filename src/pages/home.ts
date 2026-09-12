@@ -8,6 +8,7 @@ import { type ProjectsPanelElement, type ProjectSelectionChangeDetail } from "..
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
 import { type StatusPanelElement } from "../components/StatusPanel/types.js";
+import { type KeybindingsPanelElement } from "../components/KeybindingsPanel/types.js";
 
 import { PageProps } from "./types.js";
 import { Keybindings } from "../app/keybindings.types.js";
@@ -53,7 +54,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       </div>
 
       <status-panel id="status-panel"></status-panel>
-      <keybindings-panel></keybindings-panel>
+      <keybindings-panel id="keybindings-panel"></keybindings-panel>
 
       <app-modal id="modal-root"></app-modal>
     </div>
@@ -116,6 +117,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const panel3 = document.getElementById("panel-3");
   const detailsPanelElement = document.getElementById("details-panel");
   const statusPanelElement = document.getElementById("status-panel");
+  const keybindingsPanelElement = document.getElementById("keybindings-panel");
 
   const panels = [panel1, panel2, panel3, detailsPanelElement].filter((panel): panel is HTMLElement => panel !== null);
 
@@ -136,6 +138,19 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const contextPanel = panel3 as ContextPanelElement | null;
   const detailsPanel = detailsPanelElement as DetailsPanelElement | null;
   const statusPanel = statusPanelElement as StatusPanelElement | null;
+  const keybindingsPanel = keybindingsPanelElement as KeybindingsPanelElement | null;
+
+  function onSessionsPanelFocus() {
+    if (keybindingsPanel) {
+      keybindingsPanel.focusedPanel = "sessions";
+    }
+  }
+
+  function onProjectsPanelFocus() {
+    if (keybindingsPanel) {
+      keybindingsPanel.focusedPanel = "projects";
+    }
+  }
 
   const sessionResumeController = createSessionResumeController({
     client: appServerClient,
@@ -529,6 +544,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   document.addEventListener("keydown", onKeyDown);
 
+  sessionsPanel?.addEventListener("focus", onSessionsPanelFocus);
+  projectsPanel?.addEventListener("focus", onProjectsPanelFocus);
   projectsPanel?.addEventListener("project-change", onProjectChange);
   sessionsPanel?.addEventListener("session-delete-request", onSessionDeleteRequest);
   sessionsPanel?.addEventListener("session-change", onSessionChange);
@@ -556,6 +573,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     sessionResumeController.dispose();
     sessionStartController.dispose();
     appServerClient.dispose();
+    sessionsPanel?.removeEventListener("focus", onSessionsPanelFocus);
+    projectsPanel?.removeEventListener("focus", onProjectsPanelFocus);
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-delete-request", onSessionDeleteRequest);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);

@@ -19,6 +19,8 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
   class ProjectsPanel extends window.HTMLElement {
     private projectPathValue = "";
     private currentProjectPathValue = "";
+    private alreadySelectedProjectPath: string | null = null;
+    private alreadySelectedTimer: ReturnType<typeof setTimeout> | null = null;
     private projectReader: ProjectReader | null = null;
     private projects: ProjectSummary[] = [];
     private selectedProjectIndex = 0;
@@ -53,6 +55,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       this.removeEventListener("focus", this.onFocus);
       this.removeEventListener("blur", this.onBlur);
       this.removeEventListener("keydown", this.onKeyDown);
+      this.clearAlreadySelectedStatus();
     }
 
     /**
@@ -194,6 +197,10 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
             color: #43B53E;
           }
 
+          .projects-panel__status-already-selected {
+            color: #B81D1D;
+          }
+
           .projects-panel__counter {
             display: flex;
             justify-content: flex-end;
@@ -232,12 +239,50 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       const selectedProject = this.selectedProject;
 
       if (!selectedProject) return;
-      if (this.currentProjectPathValue === selectedProject.path) return;
 
+      if (this.currentProjectPathValue === selectedProject.path) {
+        this.showAlreadySelectedStatus(selectedProject.path);
+        return;
+      }
+
+      this.clearAlreadySelectedStatus();
       this.syncProjectPathToSelection();
       this.render();
       this.revealSelectedProject();
       this.dispatchSelectionChange();
+    }
+
+    /**
+     * Briefly flags that the highlighted project is already the current one.
+     */
+    private showAlreadySelectedStatus(projectPath: string): void {
+      this.clearAlreadySelectedStatus();
+
+      this.alreadySelectedProjectPath = projectPath;
+      this.render();
+      this.revealSelectedProject();
+
+      this.alreadySelectedTimer = setTimeout(() => {
+        this.alreadySelectedTimer = null;
+        this.alreadySelectedProjectPath = null;
+
+        if (this.isConnected) {
+          this.render();
+          this.revealSelectedProject();
+        }
+      }, 1000);
+    }
+
+    /**
+     * Drops any pending already-selected flag and its timer.
+     */
+    private clearAlreadySelectedStatus(): void {
+      if (this.alreadySelectedTimer) {
+        clearTimeout(this.alreadySelectedTimer);
+        this.alreadySelectedTimer = null;
+      }
+
+      this.alreadySelectedProjectPath = null;
     }
 
     /**
@@ -361,9 +406,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
         const marker = index === this.selectedProjectIndex ? "◉" : "○";
         const selectedClass = index === this.selectedProjectIndex ? "projects-panel__item is-selected" : "projects-panel__item";
         const selectedAttribute = index === this.selectedProjectIndex ? ' data-selected="true"' : "";
-        const currentLabel = project.path === this.currentProjectPathValue
-          ? ` · <span class="projects-panel__status-current">Current</span>`
-          : "";
+        const currentLabel = this.renderProjectStatusMarkup(project.path);
 
         return `
           <div class="${selectedClass}"${selectedAttribute}>
@@ -372,6 +415,21 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
         `;
       })
         .join("");
+    }
+
+    /**
+     * Builds the trailing status label for one project row.
+     */
+    private renderProjectStatusMarkup(projectPath: string): string {
+      if (projectPath === this.alreadySelectedProjectPath) {
+        return ` · <span class="projects-panel__status-already-selected">Already selected</span>`;
+      }
+
+      if (projectPath === this.currentProjectPathValue) {
+        return ` · <span class="projects-panel__status-current">Current</span>`;
+      }
+
+      return "";
     }
 
     /**
