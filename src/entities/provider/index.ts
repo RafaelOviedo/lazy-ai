@@ -1,4 +1,3 @@
-export type { ProviderProfile, ProviderRuntimeClient } from "./api.js";
 export {
   getActiveProvider,
   setActiveProvider,
@@ -11,4 +10,5 @@ export type {
   UsageLimitCredits,
   UsageLimitSnapshot,
   UsageLimitWindow,
+  ProviderProfile,
 } from "./types.js";

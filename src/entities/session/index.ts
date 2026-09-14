@@ -1,4 +1,5 @@
-export type { SessionReader } from "./api.js";
+export type { SessionReader } from "./types.ts"
+
 export type {
   ContextUsage,
   ConversationMessage,

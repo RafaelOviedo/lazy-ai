@@ -1,6 +1,5 @@
-import type { ProjectSummary } from "../types.js";
-import type { ProjectReader } from "../api.js";
-import type { SessionReader } from "../../session/api.js";
+import type { ProjectSummary, ProjectReader } from "../types.js";
+import type { SessionReader } from "../../session/types.js";
 
 /**
  * Builds a project list by grouping any provider's persisted session history.

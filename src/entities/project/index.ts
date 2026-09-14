@@ -1,3 +1,2 @@
-export type { ProjectReader } from "./api.js";
+export type { ProjectSummary, ProjectReader } from "./types.js";
 export { SessionGroupingProjectReader } from "./lib/session-grouping-project-reader.js";
-export type { ProjectSummary } from "./types.js";

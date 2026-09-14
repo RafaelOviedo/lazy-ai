@@ -1,4 +1,4 @@
-import type { ProviderRuntimeClient } from "../../entities/provider/index.js";
+import type { ProviderRuntimeClient } from "../../entities/provider/types.js";
 
 /**
  * Stands in for providers lazy-ai can read but cannot drive yet, so callers fail
