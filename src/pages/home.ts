@@ -24,7 +24,10 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
-import { createSessionDeleteController, createSessionPromptController, createSessionResumeController, createSessionStartController } from "../shared/lib/sessions/index.js";
+import { createSessionDeleteController } from "../features/delete-session/index.js";
+import { createSessionPromptController } from "../features/prompt-session/index.js";
+import { createSessionResumeController } from "../features/resume-session/index.js";
+import { createSessionStartController } from "../features/start-session/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);

@@ -1,7 +1,7 @@
 import type { TermDOM } from "@b9g/termdom";
 
 import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
-import type { PendingSessionPrompt } from "../../shared/lib/sessions";
+import type { PendingSessionPrompt } from "../../features/prompt-session/index.js";
 
 export type TermWindow = TermDOM["window"];
 

@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../../../entities/session/index.js";
+import type { SessionSummary } from "../../entities/session/index.js";
 
 type SessionPromptClient = {
   startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string }>;

@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../../../entities/session/index.js";
+import type { SessionSummary } from "../../entities/session/index.js";
 
 type SessionDeleteClient = {
   deleteThread(threadId: string): Promise<unknown>;

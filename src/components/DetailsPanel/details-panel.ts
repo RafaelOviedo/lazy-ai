@@ -1,7 +1,7 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { renderMarkdown } from "../../shared/lib/markdown/index.js";
 import type { ConversationMessage, SessionReader, SessionSummary } from "../../entities/session/index.js";
-import type { PendingSessionPrompt } from "../../shared/lib/sessions/index.js";
+import type { PendingSessionPrompt } from "../../features/prompt-session/index.js";
 import type { TermWindow } from "./types.js";
 
 /**

@@ -1,6 +1,6 @@
-import { isCodexAppServerActiveWriterError } from "../../../providers/codex/codex-app-server-client.js";
+import { isCodexAppServerActiveWriterError } from "../../providers/codex/codex-app-server-client.js";
 
-import type { SessionSummary } from "../../../entities/session/index.js";
+import type { SessionSummary } from "../../entities/session/index.js";
 
 type SessionResumeClient = {
   resumeThread(threadId: string, cwd?: string): Promise<{ threadId: string }>;
