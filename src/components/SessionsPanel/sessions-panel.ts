@@ -1,5 +1,5 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
-import { Keybindings } from "../../shared/config/keybindings.js";
+import { Keybindings } from "../../app/types.js";
 
 import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
 

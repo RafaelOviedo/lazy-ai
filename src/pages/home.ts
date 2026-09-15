@@ -12,7 +12,7 @@ import { type StatusPanelElement } from "../components/StatusPanel/types.js";
 import { type KeybindingsPanelElement } from "../components/KeybindingsPanel/types.js";
 
 import { PageProps } from "./types.js";
-import { Keybindings } from "../shared/config/keybindings.js";
+import { Keybindings } from "../app/types.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
