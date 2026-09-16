@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 
+import { requiresShellToSpawn, resolveExecutablePath } from "../../shared/lib/process/index.js";
+
 import type { CodexAppServerClientOptions } from "./types.js";
 
 type JsonRpcRequest = {
@@ -253,7 +255,7 @@ export class CodexAppServerClient {
   }
 
   private async initializeProcess(): Promise<void> {
-    this.startProcess();
+    await this.startProcess();
 
     await this.request("initialize", {
       clientInfo: {
@@ -272,11 +274,19 @@ export class CodexAppServerClient {
     });
   }
 
-  private startProcess(): void {
+  private async startProcess(): Promise<void> {
     if (this.process && !this.process.killed) return;
 
-    const appServerProcess = spawn("codex", ["app-server"], {
+    // Prefer the resolved path: an npm-installed Codex is a `codex.cmd` shim,
+    // which CreateProcess cannot launch, so those have to go via the shell.
+    // Falling back to the bare name lets the OS resolve it if PATH lookup missed.
+    const executable = await resolveExecutablePath("codex") ?? "codex";
+    const useShell = requiresShellToSpawn(executable);
+    const command = useShell ? `"${executable}"` : executable;
+
+    const appServerProcess = spawn(command, ["app-server"], {
       stdio: ["pipe", "pipe", "pipe"],
+      shell: useShell,
     });
 
     this.process = appServerProcess;

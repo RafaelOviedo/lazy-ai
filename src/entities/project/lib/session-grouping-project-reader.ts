@@ -1,3 +1,5 @@
+import { normalizeProjectPath } from "../../../shared/lib/paths/index.js";
+
 import type { ProjectSummary, ProjectReader } from "../types.js";
 import type { SessionReader } from "../../session/types.js";
 
@@ -19,7 +21,7 @@ export class SessionGroupingProjectReader implements ProjectReader {
     const projects = new Map<string, ProjectSummary>();
 
     for (const session of sessions) {
-      const projectKey = this.normalizeProjectPath(session.projectPath);
+      const projectKey = normalizeProjectPath(session.projectPath);
       const existingProject = projects.get(projectKey);
 
       if (!existingProject) {
@@ -44,12 +46,5 @@ export class SessionGroupingProjectReader implements ProjectReader {
     }
 
     return [...projects.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  }
-
-  /**
-   * Groups tolerantly because providers record separators and casing differently.
-   */
-  private normalizeProjectPath(projectPath: string): string {
-    return projectPath.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase();
   }
 }

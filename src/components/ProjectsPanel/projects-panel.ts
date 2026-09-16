@@ -1,5 +1,6 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { Keybindings } from "../../app/types.js";
+import { normalizeProjectPath } from "../../shared/lib/paths/index.js";
 
 import type { ProjectReader, ProjectSummary } from "../../entities/project/index.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
@@ -352,20 +353,12 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       if (this.projects.length === 0) return 0;
       if (!this.projectPathValue) return 0;
 
-      const preferredPath = this.normalizeProjectPath(this.projectPathValue);
+      const preferredPath = normalizeProjectPath(this.projectPathValue);
       const projectIndex = this.projects.findIndex((project) => {
-        return this.normalizeProjectPath(project.path) === preferredPath;
+        return normalizeProjectPath(project.path) === preferredPath;
       });
 
       return projectIndex === -1 ? 0 : projectIndex;
-    }
-
-    /**
-     * Matches tolerantly because the shell, Codex, and Claude Code all record
-     * the same workspace with different separators and casing.
-     */
-    private normalizeProjectPath(projectPath: string): string {
-      return projectPath.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase();
     }
 
     /**

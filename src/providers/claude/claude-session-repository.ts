@@ -2,6 +2,8 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { homedir } from "node:os";
 
+import { isSameProjectPath } from "../../shared/lib/paths/index.js";
+
 import type { UsageLimitSnapshot } from "../../entities/provider/index.js";
 import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
 import type {
@@ -71,7 +73,7 @@ export class ClaudeSessionRepository implements SessionReader {
       const sessionContext = await this.readSessionContext(sessionFilePath);
 
       if (!sessionContext?.cwd) continue;
-      if (projectPath && !this.isSameProjectPath(sessionContext.cwd, projectPath)) continue;
+      if (projectPath && !isSameProjectPath(sessionContext.cwd, projectPath)) continue;
 
       const updatedAt = sessionContext.updatedAt ?? "";
 
@@ -324,20 +326,6 @@ export class ClaudeSessionRepository implements SessionReader {
     return [usage.input_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens]
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
       .reduce((total, value) => total + value, 0);
-  }
-
-  /**
-   * Compares project paths tolerantly because providers record separators and casing differently.
-   */
-  private isSameProjectPath(left: string, right: string): boolean {
-    return this.normalizeProjectPath(left) === this.normalizeProjectPath(right);
-  }
-
-  /**
-   * Normalizes a workspace path for comparison.
-   */
-  private normalizeProjectPath(projectPath: string): string {
-    return projectPath.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase();
   }
 
   /**

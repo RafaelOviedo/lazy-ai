@@ -1,6 +1,8 @@
 import { access, readdir, readFile } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
+import { isExecutableOnPath } from "../../shared/lib/process/index.js";
 import { providerHomePath, providerLabels, providerOrder } from "./provider-registry.js";
 
 import type { ProviderId } from "../../entities/provider/index.js";
@@ -96,7 +98,7 @@ async function detectProviderStatus(providerId: ProviderId): Promise<ProviderSta
   const label = providerLabels[providerId];
 
   const [hasBinary, hasHome] = await Promise.all([
-    isBinaryOnPath(probe.binaryName),
+    isExecutableOnPath(probe.binaryName),
     isReadable(homePath),
   ]);
 
@@ -137,12 +139,19 @@ async function hasCredentials(homePath: string, probe: ProviderProbe): Promise<b
  * Claude Code records the signed-in account separately from the token store.
  */
 async function readClaudeAccountLabel(homePath: string): Promise<string | null> {
-  const config = await readJsonFile(join(homePath, "..", ".claude.json"));
-  const account = config?.oauthAccount;
+  // Usually `~/.claude.json`, beside the config dir. A relocated
+  // CLAUDE_CONFIG_DIR breaks that assumption, so the real home is the fallback.
+  const candidates = [join(homePath, "..", ".claude.json"), join(homedir(), ".claude.json")];
 
-  if (!isObject(account)) return null;
+  for (const candidate of candidates) {
+    const account = (await readJsonFile(candidate))?.oauthAccount;
 
-  return typeof account.emailAddress === "string" ? account.emailAddress : null;
+    if (isObject(account) && typeof account.emailAddress === "string") {
+      return account.emailAddress;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -175,24 +184,6 @@ async function hasAnyTranscript(directoryPath: string, maxDepth: number): Promis
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (await hasAnyTranscript(join(directoryPath, entry.name), maxDepth - 1)) return true;
-  }
-
-  return false;
-}
-
-/**
- * Resolves an executable across PATH, honouring Windows executable extensions.
- */
-async function isBinaryOnPath(binaryName: string): Promise<boolean> {
-  const searchPath = process.env.PATH ?? "";
-  const extensions = process.platform === "win32"
-    ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
-    : [];
-
-  for (const directory of searchPath.split(delimiter).filter(Boolean)) {
-    for (const extension of ["", ...extensions]) {
-      if (await isReadable(join(directory, `${binaryName}${extension}`))) return true;
-    }
   }
 
   return false;
