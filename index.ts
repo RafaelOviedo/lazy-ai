@@ -2,7 +2,7 @@ import { TermDOM } from '@b9g/termdom';
 import { renderHome } from './src/pages/index.js';
 
 import { RoutesNames } from './src/pages/types.js';
-import { detectAvailableProviders } from './src/app/registry/index.js';
+import { detectProviderStatuses, resolvePreferredProvider } from './src/app/registry/index.js';
 import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from "./src/entities/provider/index.js";
 
 const projectPath = process.cwd();
@@ -30,10 +30,12 @@ function render() {
   cleanup = routes[currentRoute]({ document, window, navigate, projectPath }) ?? null;
 }
 
-const availableProviders = await detectAvailableProviders();
+// Boot into a provider that is actually usable, preferring one with history, so
+// the first screen is not an empty dashboard for a provider that is not set up.
+const preferredProvider = resolvePreferredProvider(await detectProviderStatuses());
 
-if (availableProviders.length > 0 && !availableProviders.includes(getActiveProvider().providerId)) {
-  setActiveProvider({ modelId: null, modelLabel: null, providerId: availableProviders[0] });
+if (preferredProvider && preferredProvider !== getActiveProvider().providerId) {
+  setActiveProvider({ modelId: null, modelLabel: null, providerId: preferredProvider });
 }
 
 // Switching provider rebuilds the page so every panel reads from the new source.

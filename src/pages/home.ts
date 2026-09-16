@@ -570,6 +570,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   sessionsPanel?.addEventListener("session-resume-request", onSessionResumeRequest);
 
   if (projectsPanel) {
+    projectsPanel.providerLabel = providerProfile.label;
     projectsPanel.projectPath = projectPath;
     projectsPanel.repository = providerProfile.projects;
   }
@@ -577,6 +578,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   syncContextPanel();
 
   if (sessionsPanel) {
+    sessionsPanel.providerLabel = providerProfile.label;
     sessionsPanel.repository = sessionReader;
     sessionsPanel.projectPath = projectPath;
   }

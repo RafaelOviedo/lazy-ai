@@ -12,6 +12,7 @@ export type ProjectSelectionChangeDetail = {
 
 export type ProjectsPanelElement = HTMLElement & {
   projectPath: string;
+  providerLabel: string;
   repository: ProjectReader;
   readonly selectedProject: ProjectSummary | null;
   reload(): Promise<void>;

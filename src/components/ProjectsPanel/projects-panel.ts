@@ -17,6 +17,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
    */
   class ProjectsPanel extends window.HTMLElement {
     private projectPathValue = "";
+    private providerLabelValue = "provider";
     private currentProjectPathValue = "";
     private alreadySelectedProjectPath: string | null = null;
     private alreadySelectedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -79,6 +80,19 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      */
     get projectPath(): string {
       return this.projectPathValue;
+    }
+
+    /**
+     * Names the active provider so empty states say which history is missing.
+     */
+    set providerLabel(value: string) {
+      if (this.providerLabelValue === value) return;
+
+      this.providerLabelValue = value;
+
+      if (this.isConnected) {
+        this.render();
+      }
     }
 
     /**
@@ -396,7 +410,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       if (this.projects.length === 0) {
         return `
-          <div>No saved Codex projects yet.</div>
+          <div>${escapeHtml(`No saved ${this.providerLabelValue} projects yet.`)}</div>
           <div class="projects-panel__muted" style="margin-top: 0.5rem;">Start a session to register a project.</div>
         `;
       }

@@ -1,4 +1,3 @@
-import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -14,22 +13,29 @@ export const providerLabels: Record<ProviderId, string> = {
   codex: "Codex",
 };
 
-const providerDataPaths: Record<ProviderId, string> = {
-  "claude-code": join(homedir(), ".claude", "projects"),
-  codex: join(homedir(), ".codex", "sessions"),
-};
-
 /**
  * Providers are offered in this order wherever the app lists them.
  */
 export const providerOrder: ProviderId[] = ["claude-code", "codex"];
 
 /**
+ * Resolves a provider's data directory, honouring the relocation variable each
+ * CLI documents so detection and the readers never disagree about where to look.
+ */
+export function providerHomePath(providerId: ProviderId): string {
+  if (providerId === "claude-code") {
+    return process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+  }
+
+  return process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+}
+
+/**
  * Builds a fresh profile for one provider. Callers own disposing its client.
  */
 export function createProviderProfile(providerId: ProviderId, modelId: string | null = null): ProviderProfile {
   if (providerId === "claude-code") {
-    const sessions = new ClaudeSessionRepository();
+    const sessions = new ClaudeSessionRepository({ claudeRootPath: providerHomePath("claude-code") });
 
     return {
       client: null,
@@ -40,7 +46,7 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
     };
   }
 
-  const sessions = new CodexSessionRepository();
+  const sessions = new CodexSessionRepository({ codexRootPath: providerHomePath("codex") });
 
   return {
     client: new CodexAppServerClient({ model: modelId }),
@@ -49,32 +55,4 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
     projects: new SessionGroupingProjectReader(sessions),
     sessions,
   };
-}
-
-/**
- * Returns the providers that have local data on this machine.
- */
-export async function detectAvailableProviders(): Promise<ProviderId[]> {
-  const availability = await Promise.all(
-    providerOrder.map(async (providerId) => ({
-      providerId,
-      isAvailable: await isPathReadable(providerDataPaths[providerId]),
-    })),
-  );
-
-  return availability
-    .filter((entry) => entry.isAvailable)
-    .map((entry) => entry.providerId);
-}
-
-/**
- * Checks whether a provider data directory exists and can be read.
- */
-async function isPathReadable(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }

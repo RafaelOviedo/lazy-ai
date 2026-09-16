@@ -32,6 +32,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
    */
   class SessionsPanel extends window.HTMLElement {
     private projectPathValue = "";
+    private providerLabelValue = "provider";
     private activeSessionIdValue: string | null = null;
     private resumingSessionIdValue: string | null = null;
     private deletingSessionIdValue: string | null = null;
@@ -249,6 +250,19 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       this.updateSessionStatusMarkup(previousResumeFailedSessionId);
       this.updateSessionStatusMarkup(sessionId);
+    }
+
+    /**
+     * Names the active provider so empty states say which history is missing.
+     */
+    set providerLabel(value: string) {
+      if (this.providerLabelValue === value) return;
+
+      this.providerLabelValue = value;
+
+      if (this.isConnected) {
+        this.render();
+      }
     }
 
     /**
@@ -881,7 +895,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (this.sessions.length === 0) {
         return `
-          <div>No saved Codex sessions for this project yet.</div>
+          <div>${escapeHtml(`No saved ${this.providerLabelValue} sessions for this project yet.`)}</div>
           <div class="sessions-panel__muted" style="margin-top: 0.5rem;">Start one here by pressing n.</div>
         `;
       }

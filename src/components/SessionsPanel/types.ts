@@ -23,6 +23,7 @@ export type SessionDeleteRequestDetail = {
 export type SessionsPanelElement = HTMLElement & {
   activeSessionId: string | null;
   projectPath: string;
+  providerLabel: string;
   getSession(sessionId: string): SessionSummary | null;
   hasSession(sessionId: string): boolean;
   setSessionAlreadyRunning(sessionId: string | null): void;
