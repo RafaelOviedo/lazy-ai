@@ -44,6 +44,12 @@ type LiveSession = {
   completedTurns: TurnCompletion[];
   cwd: string | undefined;
   input: SessionInputQueue | null;
+  /**
+   * Re-issue timers per turn the user asked to interrupt, keyed by turn id.
+   * Claude Code accepts an interrupt while still starting up but aborts nothing,
+   * so the request is repeated until the turn actually ends.
+   */
+  interruptRetryTimers: Map<string, ReturnType<typeof setInterval>>;
   isResumed: boolean;
   nextTurnIndex: number;
   /** Turn ids awaiting a result, oldest first. Results arrive in turn order. */
@@ -55,6 +61,11 @@ type LiveSession = {
 };
 
 const completedTurnHistoryLimit = 20;
+const interruptRetryIntervalMs = 1500;
+// Generous enough to outlast a cold Claude Code start, which can take ~20s and
+// during which an interrupt aborts nothing. Retries stop as soon as the turn
+// ends, so a high ceiling costs nothing on a warm session.
+const interruptRetryLimit = 40;
 const deniedByUserMessage = "The user declined this tool call in lazy-ai.";
 const noApprovalSurfaceMessage = "lazy-ai has no approval surface attached, so this tool call was declined.";
 
@@ -83,6 +94,11 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   constructor(options: ClaudeSdkClientOptions = {}) {
     this.model = options.model ?? null;
     this.canResumeSession = options.canResumeSession;
+
+    // Started here so the first turn does not pay for it. Resolving the binary
+    // walks the whole PATH, and blocking `startTurn` on that delays the point at
+    // which the turn becomes interruptible.
+    void primeClaudeExecutablePath();
   }
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
@@ -215,7 +231,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
    * outcome, so a late interrupt that misses the window is reported as completed
    * rather than pretended to be interrupted.
    */
-  async interruptTurn(threadId: string, _turnId: string): Promise<void> {
+  async interruptTurn(threadId: string, turnId: string): Promise<void> {
     const session = this.sessions.get(threadId);
 
     if (!session?.query) {
@@ -223,6 +239,10 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     }
 
     await session.query.interrupt();
+
+    // An interrupt accepted during startup aborts nothing, so keep asking until
+    // the turn actually ends.
+    this.scheduleInterruptRetries(session, turnId || session.orderedTurnIds[0] || "");
   }
 
   /**
@@ -250,6 +270,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       completedTurns: [],
       cwd,
       input: null,
+      interruptRetryTimers: new Map<string, ReturnType<typeof setInterval>>(),
       isResumed,
       nextTurnIndex: 0,
       orderedTurnIds: [],
@@ -335,8 +356,52 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
    * Matches a result to the oldest turn still awaiting one. The SDK reports no
    * turn id, but streaming input produces exactly one result per turn in order.
    */
+  /**
+   * Repeats an interrupt request until the turn ends.
+   *
+   * Claude Code acknowledges an interrupt that arrives before it has begun
+   * generating, but aborts nothing, and there is no message that reliably marks
+   * the moment it becomes abortable. Re-asking on a short interval lands the
+   * abort as soon as it can take effect instead of letting the turn run out.
+   */
+  private scheduleInterruptRetries(session: LiveSession, turnId: string): void {
+    if (session.interruptRetryTimers.has(turnId)) return;
+
+    let attempts = 0;
+
+    const timer = setInterval(() => {
+      attempts += 1;
+
+      const isTurnStillRunning = session.orderedTurnIds[0] === turnId;
+
+      if (!isTurnStillRunning || !session.query || attempts > interruptRetryLimit) {
+        this.clearInterruptRetries(session, turnId);
+        return;
+      }
+
+      void session.query.interrupt().catch(() => undefined);
+    }, interruptRetryIntervalMs);
+
+    session.interruptRetryTimers.set(turnId, timer);
+  }
+
+  private clearInterruptRetries(session: LiveSession, turnId?: string): void {
+    const turnIds = turnId === undefined ? [...session.interruptRetryTimers.keys()] : [turnId];
+
+    for (const pendingTurnId of turnIds) {
+      const timer = session.interruptRetryTimers.get(pendingTurnId);
+
+      if (!timer) continue;
+
+      clearInterval(timer);
+      session.interruptRetryTimers.delete(pendingTurnId);
+    }
+  }
+
   private recordTurnCompletion(session: LiveSession, message: SDKResultMessage): void {
     const turnId = session.orderedTurnIds.shift() ?? "";
+
+    this.clearInterruptRetries(session, turnId);
     const completion: TurnCompletion = {
       ...this.readCompletionStatus(message),
       turnId,
@@ -480,6 +545,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   }
 
   private closeSession(session: LiveSession, error: Error): void {
+    this.clearInterruptRetries(session);
     this.rejectPendingTurns(session, error);
     session.input?.end();
     session.input = null;

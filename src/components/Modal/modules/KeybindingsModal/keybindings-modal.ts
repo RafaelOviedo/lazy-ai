@@ -138,7 +138,7 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
           <span class="keybindings-modal__key"><span style="color: #fff;">n</span> New session</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">p</span> Prompt session</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">i</span> Interrupt response</span>
-          <span class="keybindings-modal__key"><span style="color: #fff;">d</span> Delete session</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">d</span> Delete session (Codex only)</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">m</span> Providers and models</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">q</span> Quit</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">?</span> Keybindings</span>

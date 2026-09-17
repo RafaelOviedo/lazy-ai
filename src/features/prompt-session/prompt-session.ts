@@ -57,6 +57,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
   let conversationPollTimer: ReturnType<typeof setInterval> | null = null;
   let promptRequestVersion = 0;
   let activeTurn: ActiveSessionTurn | null = null;
+  let isInterruptRequestedBeforeTurn = false;
 
   async function promptSession(
     prompt: string,
@@ -71,6 +72,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     const currentPromptRequestVersion = promptRequestVersion + 1;
     promptRequestVersion = currentPromptRequestVersion;
     isPrompting = true;
+    isInterruptRequestedBeforeTurn = false;
 
     options.setLoadError(null);
     options.setSessionInterrupted(null);
@@ -95,6 +97,12 @@ export function createSessionPromptController(options: SessionPromptControllerOp
         threadId,
         turnId: startedTurn.turnId,
       };
+
+      // Honour an interrupt the user asked for while the turn was still starting.
+      if (isInterruptRequestedBeforeTurn) {
+        isInterruptRequestedBeforeTurn = false;
+        void interruptActiveTurn();
+      }
 
       startConversationPolling(session.id, currentPromptRequestVersion);
 
@@ -148,7 +156,16 @@ export function createSessionPromptController(options: SessionPromptControllerOp
   async function interruptActiveTurn(): Promise<boolean> {
     const turn = activeTurn;
 
-    if (!turn || turn.requestVersion !== promptRequestVersion) return false;
+    if (!turn || turn.requestVersion !== promptRequestVersion) {
+      // The turn is on its way but not yet interruptible. Remembering the
+      // request means an early keypress is honoured instead of silently lost.
+      if (isPrompting) {
+        isInterruptRequestedBeforeTurn = true;
+        return true;
+      }
+
+      return false;
+    }
     if (turn.isInterrupting) return true;
 
     turn.isInterrupting = true;
@@ -239,6 +256,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     dispose(): void {
       promptRequestVersion += 1;
       isPrompting = false;
+      isInterruptRequestedBeforeTurn = false;
       activeTurn = null;
       stopConversationPolling();
       options.setSessionThinking(null);

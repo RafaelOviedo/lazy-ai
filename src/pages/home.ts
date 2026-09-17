@@ -558,13 +558,16 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function handleInterruptSessionShortcut(event: KeyboardEvent, key: string): boolean {
     if (!isPlainKeyEvent(event) || key !== Keybindings.I) return false;
 
-    if (sessionPromptController.hasActiveTurn()) {
+    // A turn that is still starting counts as interruptible: the controllers
+    // hold the request and apply it the moment the turn exists, so pressing i
+    // early is honoured rather than silently dropped.
+    if (sessionPromptController.hasActiveTurn() || sessionPromptController.isSessionPrompting()) {
       event.preventDefault();
       void sessionPromptController.interruptActiveTurn();
       return true;
     }
 
-    if (sessionStartController.hasActiveTurn()) {
+    if (sessionStartController.hasActiveTurn() || sessionStartController.isSessionStarting()) {
       event.preventDefault();
       void sessionStartController.interruptActiveTurn();
       return true;

@@ -37,6 +37,12 @@ export function requiresShellToSpawn(executablePath: string): boolean {
 
 /**
  * Walks PATH once, either demanding the execute bit or accepting mere presence.
+ *
+ * Every candidate is probed in one batch rather than awaited one at a time. A
+ * Windows PATH of 59 entries against 16 PATHEXT suffixes is ~944 probes, and
+ * awaiting them in sequence means ~944 event-loop round trips — which stretches
+ * from well under a second to tens of seconds when the terminal UI is busy
+ * rendering. The first match in PATH order still wins, so shell semantics hold.
  */
 async function findOnPath(binaryName: string, requireExecutable: boolean): Promise<string | null> {
   const searchPath = process.env.PATH ?? "";
@@ -44,15 +50,15 @@ async function findOnPath(binaryName: string, requireExecutable: boolean): Promi
     ? (process.env.PATHEXT ?? defaultWindowsExtensions).split(";").filter(Boolean)
     : [];
 
-  for (const directory of searchPath.split(delimiter).filter(Boolean)) {
-    for (const extension of ["", ...extensions]) {
-      const candidate = join(directory, `${binaryName}${extension}`);
+  const candidates = searchPath
+    .split(delimiter)
+    .filter(Boolean)
+    .flatMap((directory) => ["", ...extensions].map((extension) => join(directory, `${binaryName}${extension}`)));
 
-      if (await isAccessible(candidate, requireExecutable)) return candidate;
-    }
-  }
+  const matches = await Promise.all(candidates.map((candidate) => isAccessible(candidate, requireExecutable)));
+  const firstMatchIndex = matches.findIndex(Boolean);
 
-  return null;
+  return firstMatchIndex === -1 ? null : candidates[firstMatchIndex];
 }
 
 async function isAccessible(path: string, requireExecutable: boolean): Promise<boolean> {

@@ -58,6 +58,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
   let conversationPollTimer: ReturnType<typeof setInterval> | null = null;
   let startRequestVersion = 0;
   let activeTurn: ActiveSessionTurn | null = null;
+  let isInterruptRequestedBeforeTurn = false;
 
   async function startSession(prompt: string, projectPath: string): Promise<void> {
     const trimmedPrompt = prompt.trim();
@@ -67,6 +68,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
     const currentStartRequestVersion = startRequestVersion + 1;
     startRequestVersion = currentStartRequestVersion;
     isStarting = true;
+    isInterruptRequestedBeforeTurn = false;
     options.setLoadError(null);
     options.setSessionInterrupted(null);
     options.setDetailsInterruptedSessionId(null);
@@ -87,6 +89,12 @@ export function createSessionStartController(options: SessionStartControllerOpti
         threadId: startedThread.threadId,
         turnId: startedTurn.turnId,
       };
+
+      // Honour an interrupt the user asked for while the turn was still starting.
+      if (isInterruptRequestedBeforeTurn) {
+        isInterruptRequestedBeforeTurn = false;
+        void interruptActiveTurn();
+      }
 
       await syncSessionUntilReady(startedThread.sessionId, currentStartRequestVersion);
 
@@ -147,7 +155,16 @@ export function createSessionStartController(options: SessionStartControllerOpti
   async function interruptActiveTurn(): Promise<boolean> {
     const turn = activeTurn;
 
-    if (!turn || turn.requestVersion !== startRequestVersion) return false;
+    if (!turn || turn.requestVersion !== startRequestVersion) {
+      // The turn is on its way but not yet interruptible. Remembering the
+      // request means an early keypress is honoured instead of silently lost.
+      if (isStarting) {
+        isInterruptRequestedBeforeTurn = true;
+        return true;
+      }
+
+      return false;
+    }
     if (turn.isInterrupting) return true;
 
     turn.isInterrupting = true;
@@ -255,6 +272,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
     dispose(): void {
       startRequestVersion += 1;
       isStarting = false;
+      isInterruptRequestedBeforeTurn = false;
       activeTurn = null;
       stopConversationPolling();
       options.setSessionThinking(null);
