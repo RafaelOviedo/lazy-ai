@@ -75,12 +75,14 @@ let hasExecutableLaunchFailure = false;
  */
 export class ClaudeSdkClient implements ProviderRuntimeClient {
   private readonly model: string | null;
+  private readonly canResumeSession: ClaudeSdkClientOptions["canResumeSession"];
   private readonly sessions = new Map<string, LiveSession>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
   private isDisposed = false;
 
   constructor(options: ClaudeSdkClientOptions = {}) {
     this.model = options.model ?? null;
+    this.canResumeSession = options.canResumeSession;
   }
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
@@ -103,7 +105,9 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   }
 
   /**
-   * Re-attaches to a persisted session. Nothing runs until the first turn.
+   * Re-attaches to a persisted session. Nothing is spawned until the first turn,
+   * so the transcript is checked here rather than letting a missing session only
+   * surface once the user has already typed a prompt.
    */
   async resumeThread(threadId: string, cwd?: string): Promise<{ threadId: string }> {
     this.assertNotDisposed();
@@ -116,9 +120,27 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       throw new SessionAlreadyRunningError(`Claude Code session ${threadId} is already running in lazy-ai.`);
     }
 
+    if (!(await this.isSessionResumable(threadId, cwd))) {
+      throw new Error(`Claude Code session ${threadId} no longer has a transcript to resume.`);
+    }
+
     this.sessions.set(threadId, this.createSessionRecord(threadId, cwd, true));
 
     return { threadId };
+  }
+
+  /**
+   * A probe that cannot answer is treated as resumable, so a failed lookup never
+   * blocks a resume that Claude Code itself would have accepted.
+   */
+  private async isSessionResumable(threadId: string, cwd?: string): Promise<boolean> {
+    if (!this.canResumeSession) return true;
+
+    try {
+      return await this.canResumeSession(threadId, cwd);
+    } catch {
+      return true;
+    }
   }
 
   /**

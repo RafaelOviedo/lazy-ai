@@ -15,6 +15,11 @@ export type ClaudeSessionRepositoryOptions = {
 };
 
 export type ClaudeSdkClientOptions = {
+  /**
+   * Reports whether a session can still be resumed. Optional: without it the
+   * client attempts the resume and lets Claude Code reject it.
+   */
+  canResumeSession?(sessionId: string, projectPath?: string): Promise<boolean>;
   model?: string | null;
 };
 

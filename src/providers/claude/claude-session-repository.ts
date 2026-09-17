@@ -94,6 +94,18 @@ export class ClaudeSessionRepository implements SessionReader {
   }
 
   /**
+   * Reports whether one session still has a transcript on disk.
+   *
+   * Resuming is only meaningful against a session Claude Code can still find, so
+   * this is the cheapest way to catch one deleted since the panel listed it.
+   */
+  async hasSession(sessionId: string, projectPath?: string): Promise<boolean> {
+    const sessionFiles = await this.findSessionFiles(this.resolveScanRoot(projectPath), true);
+
+    return sessionFiles.has(sessionId);
+  }
+
+  /**
    * Returns display-ready conversation messages for one persisted session.
    */
   async getConversation(sessionId: string): Promise<SessionConversation> {

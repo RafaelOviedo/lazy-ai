@@ -39,7 +39,7 @@ const providerCapabilities: Record<ProviderId, ProviderCapabilities> = {
   "claude-code": {
     deleteSessions: false,
     promptSessions: true,
-    resumeSessions: false,
+    resumeSessions: true,
     startSessions: true,
   },
   codex: {
@@ -59,7 +59,10 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
 
     return {
       capabilities: providerCapabilities["claude-code"],
-      client: new ClaudeSdkClient({ model: modelId }),
+      client: new ClaudeSdkClient({
+        canResumeSession: (sessionId, projectPath) => sessions.hasSession(sessionId, projectPath),
+        model: modelId,
+      }),
       id: "claude-code",
       label: providerLabels["claude-code"],
       projects: new SessionGroupingProjectReader(sessions),
