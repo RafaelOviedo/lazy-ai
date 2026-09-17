@@ -10,6 +10,8 @@ type SessionPromptControllerOptions = {
   client: SessionPromptClient;
   /** Names the provider in user-facing errors. */
   providerLabel: string;
+  /** Surfaces a failed action to the user. */
+  reportActionError(message: string): void;
   setDetailsPendingUserPrompt(prompt: PendingSessionPrompt | null): void;
   setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
@@ -104,7 +106,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
       clearActiveTurn(currentPromptRequestVersion);
 
       if (completion.status === "failed") {
-        options.setLoadError(completion.errorMessage ?? `${options.providerLabel} session failed while generating a response.`);
+        options.reportActionError(completion.errorMessage ?? `${options.providerLabel} session failed while generating a response.`);
       }
 
       if (completion.status === "interrupted") {
@@ -129,7 +131,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
 
       stopConversationPolling();
       clearActiveTurn(currentPromptRequestVersion);
-      options.setLoadError(formatPromptSessionError(error));
+      options.reportActionError(formatPromptSessionError(error));
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
       options.setDetailsPendingUserPrompt(null);
@@ -157,7 +159,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     } catch {
       if (turn.requestVersion === promptRequestVersion) {
         turn.isInterrupting = false;
-        options.setLoadError(`Failed to interrupt ${options.providerLabel} session.`);
+        options.reportActionError(`Failed to interrupt ${options.providerLabel} session.`);
         options.syncStatusPanel();
       }
 

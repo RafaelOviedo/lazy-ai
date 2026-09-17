@@ -10,6 +10,8 @@ type SessionResumeControllerOptions = {
   client: SessionResumeClient;
   /** Names the provider in user-facing errors. */
   providerLabel: string;
+  /** Surfaces a failed action to the user. */
+  reportActionError(message: string): void;
   setActiveSessionId(sessionId: string | null): void;
   setLoadError(error: string | null): void;
   setSessionAlreadyRunning(sessionId: string | null): void;
@@ -106,7 +108,7 @@ export function createSessionResumeController(options: SessionResumeControllerOp
         return;
       }
 
-      options.setLoadError(`Failed to resume ${options.providerLabel} session.`);
+      options.reportActionError(`Failed to resume ${options.providerLabel} session.`);
       options.setSessionResumeFailed(failedSessionId);
       options.syncStatusPanel();
 

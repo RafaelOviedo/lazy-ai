@@ -138,6 +138,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let loadError: string | null = null;
   let projectLoadError: string | null = null;
   let defaultModelLabel: string | null = null;
+  let pendingActionError: { message: string; title: string } | null = null;
 
   panel1?.focus();
 
@@ -178,6 +179,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionResumeController = createSessionResumeController({
     client: appServerClient,
     providerLabel: providerProfile.label,
+    reportActionError,
     setActiveSessionId: (sessionId) => {
       setInterruptedSession(null);
       if (sessionsPanel) {
@@ -198,6 +200,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     client: appServerClient,
     providerLabel: providerProfile.label,
     reloadSessions: () => sessionsPanel?.reload() ?? Promise.resolve(),
+    reportActionError,
     setLoadError: (error) => {
       loadError = error;
     },
@@ -209,6 +212,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     client: appServerClient,
     getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
     providerLabel: providerProfile.label,
+    reportActionError,
     setActiveSession: (sessionId, threadId) => sessionResumeController.markSessionActive(sessionId, threadId),
     setDetailsInterruptedSessionId: (sessionId) => {
       if (detailsPanel) {
@@ -233,6 +237,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionPromptController = createSessionPromptController({
     client: appServerClient,
     providerLabel: providerProfile.label,
+    reportActionError,
     setDetailsPendingUserPrompt: (prompt) => {
       if (detailsPanel) {
         detailsPanel.pendingUserPrompt = prompt;
@@ -267,8 +272,41 @@ export function renderHome({ document, projectPath, window }: PageProps) {
    * than calling the whole provider read-only when only some actions are missing.
    */
   function reportUnsupportedAction(action: string): void {
-    loadError = `${providerProfile.label} sessions cannot be ${action} from lazy-ai yet.`;
-    syncStatusPanel();
+    reportActionError(`${providerProfile.label} sessions cannot be ${action} from lazy-ai yet.`, "Not supported");
+  }
+
+  /**
+   * Surfaces a failed or unavailable action in a modal instead of leaving it in
+   * the status panel, where nothing clears it and it hides the provider summary.
+   *
+   * Opening over a live modal would swap that modal's element out without ever
+   * settling it, which would strand a pending tool permission request and hang
+   * its turn, so a notice arriving at a busy moment waits for the screen.
+   */
+  function reportActionError(message: string, title = "Session error"): void {
+    if (!message) return;
+
+    if (getModalConfig().isActive) {
+      pendingActionError = { message, title };
+      return;
+    }
+
+    pendingActionError = null;
+    openModal(ModalName.actionErrorModal, { message, title });
+  }
+
+  /**
+   * Shows a notice that had to wait for the screen. Tool permission requests go
+   * first, because a turn stays blocked until one is answered.
+   */
+  function flushPendingActionError(): void {
+    const pendingNotice = pendingActionError;
+
+    if (!pendingNotice || getModalConfig().isActive) return;
+    if (toolApprovalController.hasPendingRequests()) return;
+
+    pendingActionError = null;
+    openModal(ModalName.actionErrorModal, pendingNotice);
   }
 
   if (sessionsPanel) {
@@ -458,8 +496,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const activeThreadId = sessionResumeController.getActiveThreadId();
 
     if (!activeSessionId || !activeThreadId) {
-      openModal(ModalName.sessionPromptErrorModal, {
+      openModal(ModalName.actionErrorModal, {
         message: "Resume or start a session first",
+        title: "Prompt unavailable",
       });
       return;
     }
@@ -468,8 +507,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       ?? (selectedSession?.id === activeSessionId ? selectedSession : null);
 
     if (!activeSession) {
-      openModal(ModalName.sessionPromptErrorModal, {
+      openModal(ModalName.actionErrorModal, {
         message: "Resume or start a session first",
+        title: "Prompt unavailable",
       });
       return;
     }
@@ -594,6 +634,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (getModalConfig().isActive) return;
 
     toolApprovalController.handleModalClosed();
+    flushPendingActionError();
   });
 
   sessionsPanel?.addEventListener("focus", onSessionsPanelFocus);

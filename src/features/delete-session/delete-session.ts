@@ -10,6 +10,8 @@ type SessionDeleteControllerOptions = {
   /** Names the provider in user-facing errors. */
   providerLabel: string;
   reloadSessions(): Promise<void>;
+  /** Surfaces a failed action to the user. */
+  reportActionError(message: string): void;
   setLoadError(error: string | null): void;
   setSessionDeleting(sessionId: string | null): void;
   syncStatusPanel(): void;
@@ -45,7 +47,7 @@ export function createSessionDeleteController(options: SessionDeleteControllerOp
     } catch {
       if (currentDeleteRequestVersion !== deleteRequestVersion) return;
 
-      options.setLoadError(`Failed to delete ${options.providerLabel} session.`);
+      options.reportActionError(`Failed to delete ${options.providerLabel} session.`);
       options.syncStatusPanel();
     } finally {
       if (currentDeleteRequestVersion !== deleteRequestVersion) return;

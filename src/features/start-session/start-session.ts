@@ -14,6 +14,8 @@ type SessionStartControllerOptions = {
   getSession(sessionId: string): StartedSession | null;
   /** Names the provider in user-facing errors. */
   providerLabel: string;
+  /** Surfaces a failed action to the user. */
+  reportActionError(message: string): void;
   setActiveSession(sessionId: string, threadId: string): void;
   setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
@@ -104,7 +106,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
       clearActiveTurn(currentStartRequestVersion);
 
       if (completion.status === "failed") {
-        options.setLoadError(completion.errorMessage ?? `${options.providerLabel} session failed while generating a response.`);
+        options.reportActionError(completion.errorMessage ?? `${options.providerLabel} session failed while generating a response.`);
       }
 
       if (completion.status === "interrupted") {
@@ -129,7 +131,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
 
       stopConversationPolling();
       clearActiveTurn(currentStartRequestVersion);
-      options.setLoadError(formatStartSessionError(error));
+      options.reportActionError(formatStartSessionError(error));
       options.setSessionThinking(null);
       options.setDetailsThinkingSessionId(null);
       options.setSessionInterrupted(null);
@@ -156,7 +158,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
     } catch {
       if (turn.requestVersion === startRequestVersion) {
         turn.isInterrupting = false;
-        options.setLoadError(`Failed to interrupt ${options.providerLabel} session.`);
+        options.reportActionError(`Failed to interrupt ${options.providerLabel} session.`);
         options.syncStatusPanel();
       }
 

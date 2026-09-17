@@ -1,28 +1,31 @@
 import { escapeHtml } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
-import type { SessionPromptErrorModalPayload } from "./types.js";
+import type { ActionErrorModalPayload } from "./types.js";
+
+const defaultTitle = "Action unavailable";
+const defaultMessage = "That action could not be completed.";
 
 /**
- * Registers the session prompt error modal custom element against a TermDOM window.
+ * Registers the action error modal custom element against a TermDOM window.
  */
-export function ensureSessionPromptErrorModalDefined(window: TermWindow): void {
-  if (window.customElements.get("session-prompt-error-modal")) {
+export function ensureActionErrorModalDefined(window: TermWindow): void {
+  if (window.customElements.get("action-error-modal")) {
     return;
   }
 
   /**
-   * Renders a compact modal for prompt precondition failures.
+   * Renders a compact modal for a failed or unavailable session action.
    */
-  class SessionPromptErrorModal extends window.HTMLElement {
+  class ActionErrorModal extends window.HTMLElement {
     private closeModalValue: () => void = () => { };
-    private payloadValue: SessionPromptErrorModalPayload | undefined;
+    private payloadValue: ActionErrorModalPayload | undefined;
 
     connectedCallback(): void {
       this.render();
     }
 
-    set payload(value: SessionPromptErrorModalPayload | undefined) {
+    set payload(value: ActionErrorModalPayload | undefined) {
       if (this.payloadValue === value) return;
 
       this.payloadValue = value;
@@ -32,7 +35,7 @@ export function ensureSessionPromptErrorModalDefined(window: TermWindow): void {
       }
     }
 
-    get payload(): SessionPromptErrorModalPayload | undefined {
+    get payload(): ActionErrorModalPayload | undefined {
       return this.payloadValue;
     }
 
@@ -58,11 +61,12 @@ export function ensureSessionPromptErrorModalDefined(window: TermWindow): void {
     }
 
     private render(): void {
-      const message = this.payloadValue?.message ?? "Resume or start a session first";
+      const title = this.payloadValue?.title ?? defaultTitle;
+      const message = this.payloadValue?.message ?? defaultMessage;
 
       this.innerHTML = `
         <style>
-          session-prompt-error-modal {
+          action-error-modal {
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
@@ -75,29 +79,30 @@ export function ensureSessionPromptErrorModalDefined(window: TermWindow): void {
             padding: 1px;
           }
 
-          .session-prompt-error-modal__title {
+          .action-error-modal__title {
             color: #BA0606;
             font-weight: bold;
             text-align: center;
             margin-bottom: 1px;
           }
 
-          .session-prompt-error-modal__message {
+          .action-error-modal__message {
             color: #d7ecff;
             margin-bottom: 1px;
+            white-space: pre-wrap;
           }
 
-          .session-prompt-error-modal__actions {
+          .action-error-modal__actions {
             color: #d7ba7d;
           }
         </style>
 
-        <legend class="session-prompt-error-modal__title">Prompt unavailable</legend>
-        <div class="session-prompt-error-modal__message">${escapeHtml(message)}</div>
-        <div class="session-prompt-error-modal__actions">Press Enter or Esc to close</div>
+        <legend class="action-error-modal__title">${escapeHtml(title)}</legend>
+        <div class="action-error-modal__message">${escapeHtml(message)}</div>
+        <div class="action-error-modal__actions">Press Enter or Esc to close</div>
       `;
     }
   }
 
-  window.customElements.define("session-prompt-error-modal", SessionPromptErrorModal);
+  window.customElements.define("action-error-modal", ActionErrorModal);
 }

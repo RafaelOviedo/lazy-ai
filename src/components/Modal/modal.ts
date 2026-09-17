@@ -1,11 +1,11 @@
 import { useModal } from "../../composables/useModal.js";
 import { ModalName } from "../../shared/lib/modal/index.js";
 import { Keybindings } from "../../app/types.js";
+import { ensureActionErrorModalDefined } from "./modules/ActionErrorModal/action-error-modal.js";
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureKeybindingsModalDefined } from "./modules/KeybindingsModal/keybindings-modal.js";
 import { ensureModelPickerModalDefined } from "./modules/ModelPickerModal/model-picker-modal.js";
 import { ensurePromptSessionModalDefined } from "./modules/PromptSessionModal/prompt-session-modal.js";
-import { ensureSessionPromptErrorModalDefined } from "./modules/SessionPromptErrorModal/session-prompt-error-modal.js";
 import { ensureStartNewSessionModalDefined } from "./modules/StartNewSessionModal/start-new-session-modal.js";
 import { ensureToolPermissionModalDefined } from "./modules/ToolPermissionModal/tool-permission-modal.js";
 
@@ -13,11 +13,11 @@ import type { ModalConfig } from "../../shared/lib/modal/index.js";
 import type { ModalComponentDefinition, ModalElement, TermWindow } from "./types.js";
 
 const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
+  [ModalName.actionErrorModal]: { tagName: "action-error-modal", define: ensureActionErrorModalDefined },
   [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
   [ModalName.keybindingsModal]: { tagName: "keybindings-modal", define: ensureKeybindingsModalDefined },
   [ModalName.modelPickerModal]: { tagName: "model-picker-modal", define: ensureModelPickerModalDefined },
   [ModalName.promptSessionModal]: { tagName: "prompt-session-modal", define: ensurePromptSessionModalDefined },
-  [ModalName.sessionPromptErrorModal]: { tagName: "session-prompt-error-modal", define: ensureSessionPromptErrorModalDefined },
   [ModalName.startNewSessionModal]: { tagName: "start-new-session-modal", define: ensureStartNewSessionModalDefined },
   [ModalName.toolPermissionModal]: { tagName: "tool-permission-modal", define: ensureToolPermissionModalDefined },
 };
