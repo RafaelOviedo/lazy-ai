@@ -12,15 +12,14 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     return;
   }
 
-  const conversationLoadDelayMs = 300;
   const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   const thinkingSpinnerIntervalMs = 80;
 
   /**
-   * Renders selected-session detail content.
+   * Renders the explicitly opened conversation.
    */
   class DetailsPanel extends window.HTMLElement {
-    private selectedSessionValue: SessionSummary | null = null;
+    private viewedSessionValue: SessionSummary | null = null;
     private pendingUserPromptValue: PendingSessionPrompt | null = null;
     private pendingUserPromptInitialMatchCount = 0;
     private thinkingSessionIdValue: string | null = null;
@@ -30,7 +29,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private isLoading = false;
     private loadError: string | null = null;
     private loadVersion = 0;
-    private loadTimer: ReturnType<typeof setTimeout> | null = null;
     private renderedMessageFingerprints = new Map<string, string>();
     private renderedSessionId: string | null = null;
     private thinkingSpinnerFrame = 0;
@@ -52,8 +50,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.render();
       this.addEventListener("keydown", this.onKeyDown);
 
-      if (this.selectedSessionValue) {
-        this.scheduleConversationLoad();
+      if (this.viewedSessionValue) {
+        this.startConversationLoad();
       }
     }
 
@@ -61,11 +59,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Cleans up event bindings when the element leaves the document.
      */
     disconnectedCallback(): void {
-      if (this.loadTimer) {
-        clearTimeout(this.loadTimer);
-        this.loadTimer = null;
-      }
-
+      this.loadVersion += 1;
       this.removeEventListener("keydown", this.onKeyDown);
       this.stopThinkingSpinner();
     }
@@ -76,8 +70,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     set repository(value: SessionReader) {
       this.sessionReader = value;
 
-      if (this.isConnected && this.selectedSessionValue) {
-        this.scheduleConversationLoad();
+      if (this.isConnected && this.viewedSessionValue) {
+        this.startConversationLoad();
       }
     }
 
@@ -89,26 +83,44 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Updates the selected session shown in the details panel.
+     * Updates the opened session; same-session metadata changes preserve the transcript.
      */
-    set selectedSession(value: SessionSummary | null) {
-      const previousSessionId = this.selectedSessionValue?.id ?? null;
+    set viewedSession(value: SessionSummary | null) {
+      const previousSessionId = this.viewedSessionValue?.id ?? null;
       const nextSessionId = value?.id ?? null;
 
-      if (this.selectedSessionValue === value) return;
+      if (this.viewedSessionValue === value) return;
 
-      this.selectedSessionValue = value;
+      this.viewedSessionValue = value;
 
-      if (this.isConnected) {
-        this.scheduleConversationLoad(previousSessionId === nextSessionId && nextSessionId !== null);
+      if (!this.isConnected) return;
+
+      if (previousSessionId === nextSessionId) {
+        this.syncTitleMarkup();
+        return;
       }
+
+      this.startConversationLoad();
     }
 
     /**
-     * Returns the selected session shown in the details panel.
+     * Returns the session opened in the details panel, independently of the list highlight.
      */
-    get selectedSession(): SessionSummary | null {
-      return this.selectedSessionValue;
+    get viewedSession(): SessionSummary | null {
+      return this.viewedSessionValue;
+    }
+
+    /**
+     * Opens a conversation, or retries a failed load without reloading a healthy view.
+     */
+    viewSession(session: SessionSummary): void {
+      if (this.viewedSessionValue?.id === session.id && this.loadError && !this.isLoading) {
+        this.viewedSessionValue = session;
+        this.startConversationLoad();
+        return;
+      }
+
+      this.viewedSession = session;
     }
 
     /**
@@ -180,24 +192,20 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Indicates whether a conversation load is pending or in progress.
+     * Indicates whether a conversation load is in progress.
      */
     get isConversationLoading(): boolean {
-      return this.isLoading || this.loadTimer !== null;
+      return this.isLoading;
     }
 
     /**
-     * Refreshes the selected transcript in place without showing the loading state.
+     * Refreshes the opened transcript in place without showing the loading state.
      */
     async syncConversation(sessionId: string): Promise<void> {
-      if (!this.isConnected || this.selectedSessionValue?.id !== sessionId) return;
+      if (!this.isConnected || this.viewedSessionValue?.id !== sessionId) return;
+      if (this.isLoading) return;
 
       const loadVersion = ++this.loadVersion;
-
-      if (this.loadTimer) {
-        clearTimeout(this.loadTimer);
-        this.loadTimer = null;
-      }
 
       const sessionReader = this.sessionReader;
 
@@ -206,7 +214,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       try {
         const conversation = await sessionReader.getConversation(sessionId);
 
-        if (loadVersion !== this.loadVersion || this.selectedSessionValue?.id !== sessionId) return;
+        if (loadVersion !== this.loadVersion || this.viewedSessionValue?.id !== sessionId) return;
 
         this.messages = conversation.messages;
         this.isLoading = false;
@@ -220,12 +228,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         this.render();
         this.scrollToBottom();
       } catch {
-        if (loadVersion !== this.loadVersion) return;
-
-        if (this.selectedSessionValue?.id === sessionId && this.isLoading) {
-          this.isLoading = false;
-          this.render();
-        }
+        // Preserve the last transcript when a background refresh fails.
       }
     }
 
@@ -395,26 +398,26 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         </style>
 
         <div>
-          <span class="details-panel__title">Details ${this.selectedSessionValue?.title ? `- ${this.selectedSessionValue.title}` : ''}</span>
+          <span class="details-panel__title">Details ${this.viewedSessionValue?.title ? `- ${this.viewedSessionValue.title}` : ''}</span>
         </div>
         <div class="details-panel__content">
           ${this.renderContentMarkup()}
         </div>
       `;
 
-      this.renderedSessionId = this.selectedSessionValue?.id ?? null;
+      this.renderedSessionId = this.viewedSessionValue?.id ?? null;
       this.syncRenderedMessageFingerprints();
       this.syncThinkingSpinnerAnimation();
     }
 
     /**
-     * Builds the markup for empty and selected session states.
+     * Builds the markup for empty and opened conversation states.
      */
     private renderContentMarkup(): string {
-      if (!this.selectedSessionValue) {
+      if (!this.viewedSessionValue) {
         return `
-          <div style="padding-left: 1ch;">No session selected yet.</div>
-          <div class="details-panel__muted" style="margin-top: 0.5rem; padding-left: 1ch;">Select a saved session to inspect its conversation.</div>
+          <div style="padding-left: 1ch;">No conversation opened yet.</div>
+          <div class="details-panel__muted" style="margin-top: 0.5rem; padding-left: 1ch;">Press w on a session to view its conversation.</div>
         `;
       }
 
@@ -426,55 +429,55 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       if (this.loadError) {
         return `
-          <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
+          <div class="details-panel__session-title">${escapeHtml(this.viewedSessionValue.title)}</div>
           <div style="margin-top: 0.5rem;">${escapeHtml(this.loadError)}</div>
         `;
       }
 
       if (this.messages.length === 0) {
         return `
-          <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
-          ${this.isSelectedSessionPendingPrompt() || this.isSelectedSessionThinking() || this.isSelectedSessionInterrupted()
+          <div class="details-panel__session-title">${escapeHtml(this.viewedSessionValue.title)}</div>
+          ${this.isViewedSessionPendingPrompt() || this.isViewedSessionThinking() || this.isViewedSessionInterrupted()
             ? ""
             : `<div class="details-panel__muted" data-empty-conversation="true" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>`}
           <div data-conversation-messages="true">
-            ${this.isSelectedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
-            ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
-            ${this.isSelectedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
+            ${this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
+            ${this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""}
+            ${this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
           </div>
         `;
       }
 
       return `
-        <div class="details-panel__session-title">${escapeHtml(this.selectedSessionValue.title)}</div>
+        <div class="details-panel__session-title">${escapeHtml(this.viewedSessionValue.title)}</div>
         <div data-conversation-messages="true">
           ${this.messages.map((message) => this.renderMessageMarkup(message)).join("")}
-          ${this.isSelectedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
-          ${this.isSelectedSessionThinking() ? this.renderThinkingMarkup() : ""}
-          ${this.isSelectedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
+          ${this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
+          ${this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""}
+          ${this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
         </div>
       `;
     }
 
     /**
-     * Returns whether the selected session is awaiting its first response.
+     * Returns whether the opened session is awaiting its first response.
      */
-    private isSelectedSessionThinking(): boolean {
-      return this.selectedSessionValue?.id === this.thinkingSessionIdValue;
+    private isViewedSessionThinking(): boolean {
+      return this.viewedSessionValue?.id === this.thinkingSessionIdValue;
     }
 
     /**
-     * Returns whether the selected session recently had its response interrupted.
+     * Returns whether the opened session recently had its response interrupted.
      */
-    private isSelectedSessionInterrupted(): boolean {
-      return this.selectedSessionValue?.id === this.interruptedSessionIdValue && !this.isSelectedSessionThinking();
+    private isViewedSessionInterrupted(): boolean {
+      return this.viewedSessionValue?.id === this.interruptedSessionIdValue && !this.isViewedSessionThinking();
     }
 
     /**
-     * Returns whether the selected session has a prompt waiting for persistence.
+     * Returns whether the opened session has a prompt waiting for persistence.
      */
-    private isSelectedSessionPendingPrompt(): boolean {
-      return this.selectedSessionValue?.id === this.pendingUserPromptValue?.sessionId;
+    private isViewedSessionPendingPrompt(): boolean {
+      return this.viewedSessionValue?.id === this.pendingUserPromptValue?.sessionId;
     }
 
     /**
@@ -508,21 +511,15 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Shows the loading state immediately and defers heavier transcript loading.
+     * Shows the loading state and immediately loads the explicitly opened conversation.
      */
-    private scheduleConversationLoad(preserveExistingMessages = false): void {
-      const selectedSession = this.selectedSessionValue;
+    private startConversationLoad(): void {
+      const viewedSession = this.viewedSessionValue;
       const loadVersion = ++this.loadVersion;
-      const canReconcileExistingMarkup = preserveExistingMessages && this.canReconcileExistingMarkup();
-
-      if (this.loadTimer) {
-        clearTimeout(this.loadTimer);
-        this.loadTimer = null;
-      }
 
       this.loadError = null;
 
-      if (!selectedSession) {
+      if (!viewedSession) {
         this.messages = [];
         this.isLoading = false;
         this.renderedMessageFingerprints.clear();
@@ -531,29 +528,19 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
-      if (canReconcileExistingMarkup) {
-        this.isLoading = false;
-        this.syncTitleMarkup();
-      } else {
-        this.messages = [];
-        this.renderedMessageFingerprints.clear();
-        this.isLoading = true;
-        this.render();
-      }
-
-      this.loadTimer = setTimeout(() => {
-        this.loadTimer = null;
-        void this.loadConversation(selectedSession, loadVersion, canReconcileExistingMarkup);
-      }, conversationLoadDelayMs);
+      this.messages = [];
+      this.renderedMessageFingerprints.clear();
+      this.isLoading = true;
+      this.render();
+      void this.loadConversation(viewedSession, loadVersion);
     }
 
     /**
-     * Loads the selected session transcript.
+     * Loads the opened session transcript.
      */
     private async loadConversation(
-      selectedSession: SessionSummary,
+      viewedSession: SessionSummary,
       loadVersion: number,
-      reconcileExistingMarkup: boolean,
     ): Promise<void> {
       if (loadVersion !== this.loadVersion) return;
 
@@ -562,18 +549,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (!sessionReader) return;
 
       try {
-        const conversation = await sessionReader.getConversation(selectedSession.id);
+        const conversation = await sessionReader.getConversation(viewedSession.id);
 
         if (loadVersion !== this.loadVersion) return;
 
         this.messages = conversation.messages;
         this.isLoading = false;
         this.loadError = null;
-
-        if (reconcileExistingMarkup && this.syncConversationMarkup(conversation.messages)) {
-          this.scrollToBottom();
-          return;
-        }
 
         this.render();
         this.scrollToBottom();
@@ -582,7 +564,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
         this.messages = [];
         this.isLoading = false;
-        this.loadError = "Failed to load the selected session conversation.";
+        this.loadError = "Failed to load the conversation. Press w on this session to retry.";
         this.render();
       }
     }
@@ -621,11 +603,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       const sessionTitle = this.querySelector<HTMLElement>(".details-panel__session-title");
 
       if (title) {
-        title.textContent = this.selectedSessionValue?.title ? `Details - ${this.selectedSessionValue.title}` : "Details";
+        title.textContent = this.viewedSessionValue?.title ? `Details - ${this.viewedSessionValue.title}` : "Details";
       }
 
-      if (sessionTitle && this.selectedSessionValue) {
-        sessionTitle.textContent = this.selectedSessionValue.title;
+      if (sessionTitle && this.viewedSessionValue) {
+        sessionTitle.textContent = this.viewedSessionValue.title;
       }
     }
 
@@ -633,7 +615,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Appends or updates rendered message rows for a same-session refresh.
      */
     private syncConversationMarkup(messages: ConversationMessage[]): boolean {
-      if (!this.selectedSessionValue || this.renderedSessionId !== this.selectedSessionValue.id) return false;
+      if (!this.viewedSessionValue || this.renderedSessionId !== this.viewedSessionValue.id) return false;
 
       const messagesContainer = this.getMessagesContainer();
 
@@ -663,7 +645,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         this.renderedMessageFingerprints.set(message.id, fingerprint);
       }
 
-      if (messages.length > 0 || this.isSelectedSessionPendingPrompt() || this.isSelectedSessionThinking()) {
+      if (messages.length > 0 || this.isViewedSessionPendingPrompt() || this.isViewedSessionThinking()) {
         this.removeEmptyConversationMarkup();
       }
 
@@ -677,7 +659,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Adds or removes the pending user prompt row in place.
      */
     private syncPendingUserPromptMarkup(): void {
-      if (!this.selectedSessionValue || this.isLoading || this.loadError) {
+      if (!this.viewedSessionValue || this.isLoading || this.loadError) {
         this.removePendingUserPromptMarkup();
         return;
       }
@@ -691,10 +673,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       const existingPendingPrompt = this.getPendingUserPromptElement();
 
-      if (!this.isSelectedSessionPendingPrompt()) {
+      if (!this.isViewedSessionPendingPrompt()) {
         this.removePendingUserPromptMarkup();
 
-        if (this.messages.length === 0 && !this.isSelectedSessionThinking() && !this.isSelectedSessionInterrupted()) {
+        if (this.messages.length === 0 && !this.isViewedSessionThinking() && !this.isViewedSessionInterrupted()) {
           this.showEmptyConversationMarkup();
         }
 
@@ -726,7 +708,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Adds or removes the pending assistant row in place.
      */
     private syncThinkingMarkup(): void {
-      if (!this.selectedSessionValue || this.isLoading || this.loadError) {
+      if (!this.viewedSessionValue || this.isLoading || this.loadError) {
         this.removeThinkingMarkup();
         this.syncThinkingSpinnerAnimation();
         return;
@@ -741,11 +723,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       const existingThinkingRow = this.getThinkingElement();
 
-      if (!this.isSelectedSessionThinking()) {
+      if (!this.isViewedSessionThinking()) {
         if (existingThinkingRow) {
           this.removeThinkingMarkup();
 
-          if (this.messages.length === 0 && !this.isSelectedSessionPendingPrompt() && !this.isSelectedSessionInterrupted()) {
+          if (this.messages.length === 0 && !this.isViewedSessionPendingPrompt() && !this.isViewedSessionInterrupted()) {
             this.showEmptyConversationMarkup();
           }
         }
@@ -768,7 +750,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Adds or removes the interrupted assistant row in place.
      */
     private syncInterruptedMarkup(): void {
-      if (!this.selectedSessionValue || this.isLoading || this.loadError) {
+      if (!this.viewedSessionValue || this.isLoading || this.loadError) {
         this.removeInterruptedMarkup();
         return;
       }
@@ -782,11 +764,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       const existingInterruptedRow = this.getInterruptedElement();
 
-      if (!this.isSelectedSessionInterrupted()) {
+      if (!this.isViewedSessionInterrupted()) {
         if (existingInterruptedRow) {
           this.removeInterruptedMarkup();
 
-          if (this.messages.length === 0 && !this.isSelectedSessionPendingPrompt() && !this.isSelectedSessionThinking()) {
+          if (this.messages.length === 0 && !this.isViewedSessionPendingPrompt() && !this.isViewedSessionThinking()) {
             this.showEmptyConversationMarkup();
           }
         }
@@ -854,12 +836,12 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Returns whether the current DOM can be reconciled for the selected session.
+     * Returns whether the current DOM can be reconciled for the opened session.
      */
     private canReconcileExistingMarkup(): boolean {
       return Boolean(
-        this.selectedSessionValue
-        && this.renderedSessionId === this.selectedSessionValue.id
+        this.viewedSessionValue
+        && this.renderedSessionId === this.viewedSessionValue.id
         && this.getMessagesContainer(),
       );
     }

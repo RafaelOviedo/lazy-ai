@@ -3,7 +3,7 @@ import { Keybindings } from "../../app/types.js";
 
 import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
 
-import { SessionDeleteRequestDetail, SessionResumeRequestDetail, SessionSelectionChangeDetail, TermWindow } from "./types.js";
+import { SessionDeleteRequestDetail, SessionResumeRequestDetail, SessionSelectionChangeDetail, SessionViewRequestDetail, TermWindow } from "./types.js";
 
 type SessionStatusPresentation = {
   className: string | null;
@@ -747,6 +747,17 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      */
     private onKeyDown(event: KeyboardEvent): void {
       const key = event.key.toLowerCase();
+
+      if (key === Keybindings.W && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        if (!this.isLoading && this.selectedSession) {
+          this.dispatchEvent(new window.CustomEvent<SessionViewRequestDetail>("session-view-request", {
+            bubbles: true,
+            detail: { session: this.selectedSession, projectPath: this.projectPathValue },
+          }));
+        }
+        event.preventDefault();
+        return;
+      }
 
       if (key === Keybindings.J || key === "arrowdown") {
         this.moveSelection(1);

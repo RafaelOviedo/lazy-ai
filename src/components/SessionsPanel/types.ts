@@ -15,6 +15,11 @@ export type SessionResumeRequestDetail = {
   projectPath: string;
 };
 
+export type SessionViewRequestDetail = {
+  session: SessionSummary;
+  projectPath: string;
+};
+
 export type SessionDeleteRequestDetail = {
   session: SessionSummary;
   projectPath: string;

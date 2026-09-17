@@ -52,11 +52,11 @@ Existing history populates the project and session lists. You can also start a n
 1. Lazy AI detects local providers at startup, preferring one with authentication and saved history.
 2. Press `m` to open the provider and model picker. Move with `j` / `k` or the up/down arrows, then press `Enter` to select a model.
 3. Move between panels with `h` and `l`. In **Projects**, highlight a project and press `Space` to load its sessions.
-4. In **Sessions**, highlight a session to read its conversation. Press `Space` to resume it, or `n` to start a new session in the selected project.
+4. In **Sessions**, move freely with `j` / `k` or the arrow keys, then press `w` to open the highlighted session's conversation in **Details**. Press `Space` to resume it, or `n` to start a new session in the selected project.
 5. Press `p` to send a follow-up to the active session. Enter your prompt and press `Enter` to submit; use `Ctrl+J` for a new line.
 6. Follow the response in **Details**. Press `i` to interrupt it, or `q` to quit.
 
-Prompting targets the session you started or resumed. Highlighting another saved session lets you browse its conversation without making it the active session. Provider and model selections last for the current app process; switching rebuilds the dashboard, so resume a session again before prompting it.
+Prompting targets the session you started or resumed. Moving the highlight updates session metadata and leaves the opened conversation and its scroll position in place. Pressing `w` opens a conversation without making it the active session or moving keyboard focus. Starting or resuming a session, or submitting a follow-up prompt, opens that session's conversation so you can follow its response. Switching projects clears Details. Provider and model selections last for the current app process; switching rebuilds the dashboard, so resume a session again before prompting it.
 
 ### Keyboard Shortcuts
 
@@ -68,6 +68,7 @@ Dashboard shortcuts apply while no modal is open.
 | `j` / `k` or `↓` / `↑` | Sessions, Projects | Highlight the next / previous item |
 | `Space` | Projects | Select the highlighted project and load its sessions |
 | `Space` | Sessions | Resume the highlighted session |
+| `w` | Sessions | Open the highlighted conversation; retry a failed load |
 | `n` | Dashboard | Open a new-session prompt for the selected project |
 | `p` | Dashboard | Open a follow-up prompt for the active session |
 | `i` | Dashboard | Interrupt the response being generated |
@@ -118,8 +119,6 @@ Model choices come from local provider metadata. A missing model list can reflec
 | `npm run build` | Compile to `dist/` |
 | `npm start` | Run `dist/index.js` |
 | `npm run check` | Type-check without emitting files |
-
-There is no automated test suite configured yet; `npm test` is a placeholder that exits with an error.
 
 The app uses TypeScript, Node.js, [`@b9g/termdom`](https://www.npmjs.com/package/@b9g/termdom), and the Claude Agent SDK.
 

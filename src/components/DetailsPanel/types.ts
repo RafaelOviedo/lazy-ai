@@ -10,7 +10,8 @@ export type DetailsPanelElement = HTMLElement & {
   readonly isConversationLoading: boolean;
   pendingUserPrompt: PendingSessionPrompt | null;
   repository: SessionReader | null;
-  selectedSession: SessionSummary | null;
+  viewedSession: SessionSummary | null;
+  viewSession(session: SessionSummary): void;
   syncConversation(sessionId: string): Promise<void>;
   thinkingSessionId: string | null;
 };

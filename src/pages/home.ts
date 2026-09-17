@@ -4,7 +4,7 @@ import type { SessionSummary } from "../entities/session/index.js";
 import { createProviderProfile, createUnavailableRuntimeClient, listProviderModels, resolveDefaultModel } from "../app/registry/index.js";
 import { getActiveProvider, setActiveProvider } from "../entities/provider/index.js";
 
-import { type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail, type SessionsPanelElement } from "../components/SessionsPanel/types.js";
+import { type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail, type SessionViewRequestDetail, type SessionsPanelElement } from "../components/SessionsPanel/types.js";
 import { type ProjectSelectionChangeDetail, type ProjectsPanelElement } from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
@@ -181,9 +181,16 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     providerLabel: providerProfile.label,
     reportActionError,
     setActiveSessionId: (sessionId) => {
+      const wasActive = sessionsPanel?.activeSessionId === sessionId;
       setInterruptedSession(null);
       if (sessionsPanel) {
         sessionsPanel.activeSessionId = sessionId;
+      }
+      // A completed turn marks the session active again; it must not replace a
+      // different conversation the user has since opened.
+      if (sessionId && !wasActive) {
+        const session = sessionsPanel?.getSession(sessionId);
+        if (session) viewSession(session);
       }
     },
     setLoadError: (error) => {
@@ -196,7 +203,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   });
 
   const sessionDeleteController = createSessionDeleteController({
-    clearActiveSession: (sessionId) => sessionResumeController.clearActiveSession(sessionId),
+    clearActiveSession: (sessionId) => {
+      sessionResumeController.clearActiveSession(sessionId);
+      if (detailsPanel?.viewedSession?.id === sessionId) {
+        detailsPanel.viewedSession = null;
+      }
+    },
     client: appServerClient,
     providerLabel: providerProfile.label,
     reloadSessions: () => sessionsPanel?.reload() ?? Promise.resolve(),
@@ -230,7 +242,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     setSessionInterrupted: (sessionId) => sessionsPanel?.setSessionInterrupted(sessionId),
     setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
-    syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
+    syncSession,
     syncStatusPanel,
   });
 
@@ -259,7 +271,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     setSessionInterrupted: (sessionId) => sessionsPanel?.setSessionInterrupted(sessionId),
     setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
-    syncSession: (sessionId) => sessionsPanel?.syncSession(sessionId) ?? Promise.resolve(null),
+    syncSession,
     syncStatusPanel,
   });
 
@@ -313,15 +325,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     sessionsPanel.activeSessionId = sessionResumeController.getActiveSessionId();
   }
 
-  function renderPanels() {
-    syncDetailsPanel();
-    syncStatusPanel();
+  function viewSession(session: SessionSummary) {
+    if (session.projectPath !== selectedProjectPath) return;
+    detailsPanel?.viewSession(session);
   }
 
-  function syncDetailsPanel() {
-    if (!detailsPanel) return;
-
-    detailsPanel.selectedSession = selectedSession;
+  async function syncSession(sessionId: string) {
+    const session = await sessionsPanel?.syncSession(sessionId) ?? null;
+    if (session && detailsPanel?.viewedSession?.id === session.id) {
+      detailsPanel.viewedSession = session;
+    }
+    return session;
   }
 
   function syncStatusPanel() {
@@ -357,6 +371,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     projectLoadError = customEvent.detail.error;
 
+    if (detailsPanel && selectedProjectPath !== (selectedProject?.path ?? projectPath)) {
+      detailsPanel.viewedSession = null;
+    }
+
     if (selectedProject) {
       selectedProjectPath = selectedProject.path;
       selectedProjectName = selectedProject.name;
@@ -374,7 +392,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     void refreshUsageLimit();
     syncContextPanel();
-    renderPanels();
+    syncStatusPanel();
   }
 
   async function refreshDefaultModelLabel() {
@@ -406,7 +424,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     selectedProjectPath = customEvent.detail.projectPath || selectedProjectPath;
     loadError = customEvent.detail.error;
     syncContextPanel();
-    renderPanels();
+    syncStatusPanel();
+  }
+
+  function onSessionViewRequest(event: Event) {
+    if (getModalConfig().isActive) return;
+    const { session, projectPath } = (event as CustomEvent<SessionViewRequestDetail>).detail;
+    if (projectPath === selectedProjectPath) viewSession(session);
   }
 
   function onSessionResumeRequest(event: Event) {
@@ -418,10 +442,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       return;
     }
 
-    if (detailsPanel?.isConversationLoading) return;
     if (sessionResumeController.isSessionResuming(requestedSession.id)) return;
 
     if (sessionResumeController.isSessionActive(requestedSession.id)) {
+      viewSession(requestedSession);
       sessionResumeController.showAlreadyRunningStatus(requestedSession.id);
       return;
     }
@@ -520,6 +544,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       onConfirm: (prompt: string) => {
         closeModal();
         sessionsPanel?.selectSession(activeSession.id);
+        viewSession(activeSession);
         void sessionPromptController.promptSession(prompt, activeSession, activeThreadId, activeSession.projectPath);
       },
       sessionTitle: activeSession.title,
@@ -645,6 +670,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   projectsPanel?.addEventListener("project-change", onProjectChange);
   sessionsPanel?.addEventListener("session-delete-request", onSessionDeleteRequest);
   sessionsPanel?.addEventListener("session-change", onSessionChange);
+  sessionsPanel?.addEventListener("session-view-request", onSessionViewRequest);
   sessionsPanel?.addEventListener("session-resume-request", onSessionResumeRequest);
 
   if (projectsPanel) {
@@ -664,7 +690,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   void refreshDefaultModelLabel();
   void refreshUsageLimit();
 
-  renderPanels();
+  syncStatusPanel();
 
   return () => {
     sessionDeleteController.dispose();
@@ -681,6 +707,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     projectsPanel?.removeEventListener("project-change", onProjectChange);
     sessionsPanel?.removeEventListener("session-delete-request", onSessionDeleteRequest);
     sessionsPanel?.removeEventListener("session-change", onSessionChange);
+    sessionsPanel?.removeEventListener("session-view-request", onSessionViewRequest);
     sessionsPanel?.removeEventListener("session-resume-request", onSessionResumeRequest);
     document.removeEventListener("keydown", onKeyDown);
   };
