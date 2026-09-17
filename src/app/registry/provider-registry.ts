@@ -1,12 +1,13 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { ClaudeSdkClient } from "../../providers/claude/claude-sdk-client.js";
 import { ClaudeSessionRepository } from "../../providers/claude/claude-session-repository.js";
 import { CodexAppServerClient } from "../../providers/codex/codex-app-server-client.js";
 import { CodexSessionRepository } from "../../providers/codex/codex-session-repository.js";
 import { SessionGroupingProjectReader } from "../../entities/project/index.js";
 
-import type { ProviderId, ProviderProfile } from "../../entities/provider/index.js";
+import type { ProviderCapabilities, ProviderId, ProviderProfile } from "../../entities/provider/index.js";
 
 export const providerLabels: Record<ProviderId, string> = {
   "claude-code": "Claude Code",
@@ -31,6 +32,25 @@ export function providerHomePath(providerId: ProviderId): string {
 }
 
 /**
+ * What lazy-ai can drive per provider today. Claude Code exposes no session
+ * deletion, so that action stays off rather than deleting transcripts directly.
+ */
+const providerCapabilities: Record<ProviderId, ProviderCapabilities> = {
+  "claude-code": {
+    deleteSessions: false,
+    promptSessions: true,
+    resumeSessions: false,
+    startSessions: true,
+  },
+  codex: {
+    deleteSessions: true,
+    promptSessions: true,
+    resumeSessions: true,
+    startSessions: true,
+  },
+};
+
+/**
  * Builds a fresh profile for one provider. Callers own disposing its client.
  */
 export function createProviderProfile(providerId: ProviderId, modelId: string | null = null): ProviderProfile {
@@ -38,7 +58,8 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
     const sessions = new ClaudeSessionRepository({ claudeRootPath: providerHomePath("claude-code") });
 
     return {
-      client: null,
+      capabilities: providerCapabilities["claude-code"],
+      client: new ClaudeSdkClient({ model: modelId }),
       id: "claude-code",
       label: providerLabels["claude-code"],
       projects: new SessionGroupingProjectReader(sessions),
@@ -49,6 +70,7 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
   const sessions = new CodexSessionRepository({ codexRootPath: providerHomePath("codex") });
 
   return {
+    capabilities: providerCapabilities.codex,
     client: new CodexAppServerClient({ model: modelId }),
     id: "codex",
     label: providerLabels.codex,

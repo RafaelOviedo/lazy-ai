@@ -5,6 +5,7 @@ export enum ModalName {
   promptSessionModal = "PromptSessionModal",
   sessionPromptErrorModal = "SessionPromptErrorModal",
   startNewSessionModal = "StartNewSessionModal",
+  toolPermissionModal = "ToolPermissionModal",
 }
 
 export type ModalPayload<T = unknown> = T;

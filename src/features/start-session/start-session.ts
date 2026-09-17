@@ -12,6 +12,8 @@ type StartedSession = {
 type SessionStartControllerOptions = {
   client: SessionStartClient;
   getSession(sessionId: string): StartedSession | null;
+  /** Names the provider in user-facing errors. */
+  providerLabel: string;
   setActiveSession(sessionId: string, threadId: string): void;
   setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
@@ -41,6 +43,8 @@ type ActiveSessionTurn = {
 const sessionReloadAttempts = 20;
 const sessionReloadRetryDelayMs = 250;
 const conversationPollIntervalMs = 1000;
+const conversationSettleAttempts = 3;
+const conversationSettleDelayMs = 250;
 const untitledSessionTitle = "Untitled session";
 
 /**
@@ -100,16 +104,16 @@ export function createSessionStartController(options: SessionStartControllerOpti
       clearActiveTurn(currentStartRequestVersion);
 
       if (completion.status === "failed") {
-        options.setLoadError(completion.errorMessage ?? "Codex session failed while generating a response.");
+        options.setLoadError(completion.errorMessage ?? `${options.providerLabel} session failed while generating a response.`);
       }
 
       if (completion.status === "interrupted") {
-        options.setLoadError("Codex session was interrupted before the response completed.");
+        options.setLoadError(`${options.providerLabel} session was interrupted before the response completed.`);
       }
 
       options.setSessionThinking(null);
       await syncSessionUntilReady(startedThread.sessionId, currentStartRequestVersion);
-      await options.syncConversation(startedThread.sessionId);
+      await settleConversation(startedThread.sessionId, currentStartRequestVersion);
 
       if (currentStartRequestVersion !== startRequestVersion) return;
 
@@ -152,7 +156,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
     } catch {
       if (turn.requestVersion === startRequestVersion) {
         turn.isInterrupting = false;
-        options.setLoadError("Failed to interrupt Codex session.");
+        options.setLoadError(`Failed to interrupt ${options.providerLabel} session.`);
         options.syncStatusPanel();
       }
 
@@ -194,6 +198,26 @@ export function createSessionStartController(options: SessionStartControllerOpti
       });
   }
 
+  /**
+   * Re-reads the transcript a few times after the turn reports completion.
+   *
+   * A provider can write its closing assistant record just after it announces the
+   * turn is done, so a single read can miss the final reply and leave the details
+   * panel one message short.
+   */
+  async function settleConversation(sessionId: string, requestVersion: number): Promise<void> {
+    for (let attempt = 0; attempt < conversationSettleAttempts; attempt += 1) {
+      await options.syncConversation(sessionId);
+
+      if (requestVersion !== startRequestVersion) return;
+      if (attempt === conversationSettleAttempts - 1) return;
+
+      await wait(conversationSettleDelayMs);
+
+      if (requestVersion !== startRequestVersion) return;
+    }
+  }
+
   async function syncSessionUntilReady(sessionId: string, requestVersion: number): Promise<void> {
     for (let attempt = 0; attempt < sessionReloadAttempts; attempt += 1) {
       const syncedSession = await options.syncSession(sessionId);
@@ -212,11 +236,11 @@ export function createSessionStartController(options: SessionStartControllerOpti
   }
 
   function formatStartSessionError(error: unknown): string {
-    if (error instanceof Error && error.message.includes("Timed out waiting for Codex turn completion")) {
-      return "Timed out waiting for Codex response. The session may still be running.";
+    if (error instanceof Error && /timed out waiting for/i.test(error.message)) {
+      return `Timed out waiting for ${options.providerLabel} response. The session may still be running.`;
     }
 
-    return "Failed to start Codex session.";
+    return `Failed to start ${options.providerLabel} session.`;
   }
 
   function wait(delayMs: number): Promise<void> {

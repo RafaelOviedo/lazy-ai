@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 
+import { SessionAlreadyRunningError } from "../../entities/provider/index.js";
 import { requiresShellToSpawn, resolveExecutablePath } from "../../shared/lib/process/index.js";
 
 import type { CodexAppServerClientOptions } from "./types.js";
@@ -63,17 +64,6 @@ export type CodexAppServerTurnCompletionResult = {
   threadId: string;
   turnId?: string;
 };
-
-export class CodexAppServerActiveWriterError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CodexAppServerActiveWriterError";
-  }
-}
-
-export function isCodexAppServerActiveWriterError(error: unknown): error is CodexAppServerActiveWriterError {
-  return error instanceof CodexAppServerActiveWriterError;
-}
 
 type ThreadResumeResponse = {
   thread?: {
@@ -370,7 +360,7 @@ export class CodexAppServerClient {
       const responseError = this.formatResponseError(pendingRequest.method, message.error);
 
       if (this.isActiveWriterError(message.error)) {
-        pendingRequest.reject(new CodexAppServerActiveWriterError(responseError));
+        pendingRequest.reject(new SessionAlreadyRunningError(responseError));
         return;
       }
 

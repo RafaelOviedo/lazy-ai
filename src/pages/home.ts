@@ -28,6 +28,9 @@ import { createSessionDeleteController } from "../features/delete-session/index.
 import { createSessionPromptController } from "../features/prompt-session/index.js";
 import { createSessionResumeController } from "../features/resume-session/index.js";
 import { createSessionStartController } from "../features/start-session/index.js";
+import { createToolApprovalController } from "../features/approve-tool-use/index.js";
+
+import type { ToolPermissionDecision, ToolPermissionRequest } from "../entities/provider/index.js";
 
 export function renderHome({ document, projectPath, window }: PageProps) {
   ensureSessionsPanelDefined(window);
@@ -38,11 +41,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureKeybindingsPanelDefined(window);
   ensureModalDefined(window);
 
-  const { closeModal, getModalConfig, openModal } = useModal();
+  const { closeModal, getModalConfig, openModal, subscribe: subscribeModal } = useModal();
   const activeProvider = getActiveProvider();
   const providerProfile = createProviderProfile(activeProvider.providerId, activeProvider.modelId);
   const sessionReader = providerProfile.sessions;
-  const canDriveSessions = providerProfile.client !== null;
+  const providerCapabilities = providerProfile.capabilities;
   const appServerClient = providerProfile.client ?? createUnavailableRuntimeClient(providerProfile.label);
 
   document.body.innerHTML = `
@@ -157,8 +160,24 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     }
   }
 
+  const toolApprovalController = createToolApprovalController({
+    closeModal,
+    isModalActive: () => getModalConfig().isActive,
+    openPermissionModal: (request: ToolPermissionRequest, queuedCount: number, onDecide: (decision: ToolPermissionDecision) => void) => {
+      openModal(ModalName.toolPermissionModal, {
+        onDecide,
+        queuedCount,
+        request,
+      });
+    },
+  });
+
+  // Only providers that gate tool use expose this, so the call stays optional.
+  appServerClient.setToolPermissionHandler?.(toolApprovalController.requestToolPermission);
+
   const sessionResumeController = createSessionResumeController({
     client: appServerClient,
+    providerLabel: providerProfile.label,
     setActiveSessionId: (sessionId) => {
       setInterruptedSession(null);
       if (sessionsPanel) {
@@ -177,6 +196,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionDeleteController = createSessionDeleteController({
     clearActiveSession: (sessionId) => sessionResumeController.clearActiveSession(sessionId),
     client: appServerClient,
+    providerLabel: providerProfile.label,
     reloadSessions: () => sessionsPanel?.reload() ?? Promise.resolve(),
     setLoadError: (error) => {
       loadError = error;
@@ -188,6 +208,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionStartController = createSessionStartController({
     client: appServerClient,
     getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
+    providerLabel: providerProfile.label,
     setActiveSession: (sessionId, threadId) => sessionResumeController.markSessionActive(sessionId, threadId),
     setDetailsInterruptedSessionId: (sessionId) => {
       if (detailsPanel) {
@@ -211,6 +232,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const sessionPromptController = createSessionPromptController({
     client: appServerClient,
+    providerLabel: providerProfile.label,
     setDetailsPendingUserPrompt: (prompt) => {
       if (detailsPanel) {
         detailsPanel.pendingUserPrompt = prompt;
@@ -240,8 +262,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     detailsPanel.repository = sessionReader;
   }
 
-  function reportReadOnlyProvider(): void {
-    loadError = `${providerProfile.label} sessions are read-only in lazy-ai for now.`;
+  /**
+   * Reports one action the active provider cannot be driven to perform, rather
+   * than calling the whole provider read-only when only some actions are missing.
+   */
+  function reportUnsupportedAction(action: string): void {
+    loadError = `${providerProfile.label} sessions cannot be ${action} from lazy-ai yet.`;
     syncStatusPanel();
   }
 
@@ -349,8 +375,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const customEvent = event as CustomEvent<SessionResumeRequestDetail>;
     const requestedSession = customEvent.detail.session;
 
-    if (!canDriveSessions) {
-      reportReadOnlyProvider();
+    if (!providerCapabilities.resumeSessions) {
+      reportUnsupportedAction("resumed");
       return;
     }
 
@@ -369,8 +395,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const customEvent = event as CustomEvent<SessionDeleteRequestDetail>;
     const requestedSession = customEvent.detail.session;
 
-    if (!canDriveSessions) {
-      reportReadOnlyProvider();
+    if (!providerCapabilities.deleteSessions) {
+      reportUnsupportedAction("deleted");
       return;
     }
 
@@ -388,8 +414,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openStartNewSessionModal() {
-    if (!canDriveSessions) {
-      reportReadOnlyProvider();
+    if (!providerCapabilities.startSessions) {
+      reportUnsupportedAction("started");
       return;
     }
 
@@ -420,8 +446,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openPromptSessionModal() {
-    if (!canDriveSessions) {
-      reportReadOnlyProvider();
+    if (!providerCapabilities.promptSessions) {
+      reportUnsupportedAction("prompted");
       return;
     }
 
@@ -562,6 +588,14 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   document.addEventListener("keydown", onKeyDown);
 
+  // A permission request that arrived while another modal held the screen still
+  // has a turn blocked on it, so retry as soon as the screen frees up.
+  const unsubscribeModal = subscribeModal(() => {
+    if (getModalConfig().isActive) return;
+
+    toolApprovalController.handleModalClosed();
+  });
+
   sessionsPanel?.addEventListener("focus", onSessionsPanelFocus);
   projectsPanel?.addEventListener("focus", onProjectsPanelFocus);
   projectsPanel?.addEventListener("project-change", onProjectChange);
@@ -593,6 +627,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     sessionPromptController.dispose();
     sessionResumeController.dispose();
     sessionStartController.dispose();
+    // Detached before disposal so no in-flight request reaches a dead modal.
+    appServerClient.setToolPermissionHandler?.(null);
+    toolApprovalController.dispose();
+    unsubscribeModal();
     appServerClient.dispose();
     sessionsPanel?.removeEventListener("focus", onSessionsPanelFocus);
     projectsPanel?.removeEventListener("focus", onProjectsPanelFocus);

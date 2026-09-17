@@ -7,6 +7,8 @@ type SessionDeleteClient = {
 type SessionDeleteControllerOptions = {
   clearActiveSession(sessionId: string): void;
   client: SessionDeleteClient;
+  /** Names the provider in user-facing errors. */
+  providerLabel: string;
   reloadSessions(): Promise<void>;
   setLoadError(error: string | null): void;
   setSessionDeleting(sessionId: string | null): void;
@@ -43,7 +45,7 @@ export function createSessionDeleteController(options: SessionDeleteControllerOp
     } catch {
       if (currentDeleteRequestVersion !== deleteRequestVersion) return;
 
-      options.setLoadError("Failed to delete Codex session.");
+      options.setLoadError(`Failed to delete ${options.providerLabel} session.`);
       options.syncStatusPanel();
     } finally {
       if (currentDeleteRequestVersion !== deleteRequestVersion) return;

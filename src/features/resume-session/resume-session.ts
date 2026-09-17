@@ -1,4 +1,4 @@
-import { isCodexAppServerActiveWriterError } from "../../providers/codex/codex-app-server-client.js";
+import { isSessionAlreadyRunningError } from "../../entities/provider/index.js";
 
 import type { SessionSummary } from "../../entities/session/index.js";
 
@@ -8,6 +8,8 @@ type SessionResumeClient = {
 
 type SessionResumeControllerOptions = {
   client: SessionResumeClient;
+  /** Names the provider in user-facing errors. */
+  providerLabel: string;
   setActiveSessionId(sessionId: string | null): void;
   setLoadError(error: string | null): void;
   setSessionAlreadyRunning(sessionId: string | null): void;
@@ -99,12 +101,12 @@ export function createSessionResumeController(options: SessionResumeControllerOp
       resumingSessionId = null;
       options.setSessionResuming(null);
 
-      if (isCodexAppServerActiveWriterError(error)) {
+      if (isSessionAlreadyRunningError(error)) {
         showAlreadyRunningStatus(failedSessionId);
         return;
       }
 
-      options.setLoadError("Failed to resume Codex session.");
+      options.setLoadError(`Failed to resume ${options.providerLabel} session.`);
       options.setSessionResumeFailed(failedSessionId);
       options.syncStatusPanel();
 

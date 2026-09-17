@@ -8,6 +8,8 @@ type SessionPromptClient = {
 
 type SessionPromptControllerOptions = {
   client: SessionPromptClient;
+  /** Names the provider in user-facing errors. */
+  providerLabel: string;
   setDetailsPendingUserPrompt(prompt: PendingSessionPrompt | null): void;
   setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
@@ -41,6 +43,8 @@ type ActiveSessionTurn = {
 };
 
 const conversationPollIntervalMs = 1000;
+const conversationSettleAttempts = 3;
+const conversationSettleDelayMs = 250;
 
 /**
  * Coordinates follow-up prompts sent to an already running session.
@@ -100,16 +104,16 @@ export function createSessionPromptController(options: SessionPromptControllerOp
       clearActiveTurn(currentPromptRequestVersion);
 
       if (completion.status === "failed") {
-        options.setLoadError(completion.errorMessage ?? "Codex session failed while generating a response.");
+        options.setLoadError(completion.errorMessage ?? `${options.providerLabel} session failed while generating a response.`);
       }
 
       if (completion.status === "interrupted") {
-        options.setLoadError("Codex session was interrupted before the response completed.");
+        options.setLoadError(`${options.providerLabel} session was interrupted before the response completed.`);
       }
 
       options.setSessionThinking(null);
       await options.syncSession(session.id);
-      await options.syncConversation(session.id);
+      await settleConversation(session.id, currentPromptRequestVersion);
 
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
@@ -153,7 +157,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     } catch {
       if (turn.requestVersion === promptRequestVersion) {
         turn.isInterrupting = false;
-        options.setLoadError("Failed to interrupt Codex session.");
+        options.setLoadError(`Failed to interrupt ${options.providerLabel} session.`);
         options.syncStatusPanel();
       }
 
@@ -195,12 +199,38 @@ export function createSessionPromptController(options: SessionPromptControllerOp
       });
   }
 
+  /**
+   * Re-reads the transcript a few times after the turn reports completion.
+   *
+   * A provider can write its closing assistant record just after it announces the
+   * turn is done, so a single read can miss the final reply and leave the details
+   * panel one message short.
+   */
+  async function settleConversation(sessionId: string, requestVersion: number): Promise<void> {
+    for (let attempt = 0; attempt < conversationSettleAttempts; attempt += 1) {
+      await options.syncConversation(sessionId);
+
+      if (requestVersion !== promptRequestVersion) return;
+      if (attempt === conversationSettleAttempts - 1) return;
+
+      await wait(conversationSettleDelayMs);
+
+      if (requestVersion !== promptRequestVersion) return;
+    }
+  }
+
+  function wait(delayMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, delayMs);
+    });
+  }
+
   function formatPromptSessionError(error: unknown): string {
-    if (error instanceof Error && error.message.includes("Timed out waiting for Codex turn completion")) {
-      return "Timed out waiting for Codex response. The session may still be running.";
+    if (error instanceof Error && /timed out waiting for/i.test(error.message)) {
+      return `Timed out waiting for ${options.providerLabel} response. The session may still be running.`;
     }
 
-    return "Failed to prompt Codex session.";
+    return `Failed to prompt ${options.providerLabel} session.`;
   }
 
   return {

@@ -14,6 +14,10 @@ export type ClaudeSessionRepositoryOptions = {
   claudeRootPath?: string;
 };
 
+export type ClaudeSdkClientOptions = {
+  model?: string | null;
+};
+
 export type ClaudeTranscriptUsage = {
   input_tokens?: number;
   cache_creation_input_tokens?: number;
