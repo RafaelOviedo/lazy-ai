@@ -138,10 +138,6 @@ export function ensureContextPanelDefined(window: TermWindow): void {
             color: #8aa4bf;
           }
 
-          .context-panel__usage {
-            margin-top: 0.5rem;
-          }
-
           .context-panel__done {
             color: #43B53E;
           }
@@ -181,8 +177,12 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
       return `
         <div>
-          <div class="context-panel__muted">Model</div><div>${escapeHtml(this.selectedSessionValue.model)}</div> · <div class="context-panel__muted">Updated</div>
-          <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
+          <div style="display: flex;">
+            <div class="context-panel__muted">Model: </div> <div>${escapeHtml(this.selectedSessionValue.model)}</div>
+            <div> | </div>
+            <div class="context-panel__muted">Updated: </div> <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
+          </div>
+          <div> · </div>
           ${this.renderContextUsageMarkup()}
         </div>
       `;
@@ -194,7 +194,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
     private renderContextUsageMarkup(): string {
       if (!this.selectedSessionValue?.contextUsage) {
         return `
-          <div class="context-panel__usage">
+          <div>
             <div class="context-panel__muted">Context usage</div>
             <div>usage unavailable</div>
           </div>
@@ -205,7 +205,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       const tokenBar = getTokenBarSegments(percent);
 
       return `
-        <div class="context-panel__usage">
+        <div>
           <div class="context-panel__muted">Context usage</div>
           <div>
             <span class="context-panel__done">${tokenBar.done}</span><span class="context-panel__rest">${tokenBar.rest}</span>
