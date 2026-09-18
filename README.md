@@ -1,6 +1,8 @@
 <div align="center">
 
-# LazyAI
+<h1>
+  <img src="docs/images/lazyai-logo.png" alt="LazyAI" width="360">
+</h1>
 
 A keyboard-first terminal UI for Claude Code and Codex sessions
 <br/>
@@ -59,7 +61,7 @@ Press `m` to open the provider and model picker. LazyAI detects usable local pro
 
 ### Approve Codex or Claude Code Tools
 
-When Claude Code asks for tool permission, LazyAI opens an in-terminal approval modal. Choose whether to allow once, allow for the session when available, or deny.
+When Codex or Claude Code asks for tool permission, LazyAI opens an in-terminal approval modal. Choose whether to allow once, allow for the session when available, or deny.
 
 <!-- TODO: Add tool permission GIF at docs/gifs/approve-claude-code-tools.gif -->
 
