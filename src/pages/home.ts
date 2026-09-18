@@ -68,53 +68,75 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     </div>
 
     <style>
+      html, body {
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+      }
+
       .card {
         display: flex;
         flex-direction: column;
-        justify-content: space-evenly;
-        align-items: center;
+        gap: 1px;
         position: relative;
         border: 1px solid #5fafff;
         padding: 0 1ch;
-        width: 100%;
-        height: 100%;
+        height: 100vh;
+        box-sizing: border-box;
+        overflow: hidden;
         border-radius: 5px;
       }
 
       .container-for-1-and-2 {
         display: flex;
         flex-direction: row;
-        justify-content: space-evenly;
-        width: 98%;
-        height: 85%;
+        gap: 2px;
+        flex-grow: 1;
+        flex-shrink: 1;
+        /* TermDOM requires a length here: a unitless 0 is parsed as flex-grow. */
+        flex-basis: 0px;
+        min-height: 0;
+        overflow: hidden;
       }
 
       .container-1 {
         display: flex;
         flex-direction: column;
-        justify-content: space-evenly;
-        width: 30%;
-        height: 82%;
+        gap: 1px;
+        flex-grow: 3;
+        flex-shrink: 1;
+        flex-basis: 0px;
+        min-width: 0;
+        min-height: 0;
       }
 
-      .container-1-2 {
-        width: fit-content;
-        height: 39%;
-        border: 1px solid #5fafff;
-        border-radius: 5px;
+      .container-1-1,
+      .container-1-2,
+      .container-1-3 {
+        min-height: 0;
+        flex-grow: 1;
+        flex-shrink: 1;
+        flex-basis: 0px;
       }
 
       .container-1-3 {
-        width: fit-content;
-        height: 29%;
-        border: 1px solid #5fafff;
-        border-radius: 5px;
+        flex-grow: 1.2;
       }
 
       .container-1-1:focus,
       .container-1-2:focus,
       .container-1-3:focus {
         border-color: #fff;
+      }
+
+      @media (max-height: 30px) {
+        .card, .container-1 {
+          gap: 0;
+        }
+
+        status-panel {
+          flex-basis: 3px;
+        }
       }
 
     </style>

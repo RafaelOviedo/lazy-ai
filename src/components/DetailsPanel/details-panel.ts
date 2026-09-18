@@ -241,10 +241,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           details-panel {
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            width: 67%;
-            height: 82%;
+            flex-grow: 7;
+            flex-shrink: 1;
+            flex-basis: 0px;
+            min-width: 0;
+            min-height: 0;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
@@ -261,8 +262,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
 
           .details-panel__title {
-            width: 65%;
-            height: 3%;
+            flex: 0 0 1px;
             display: flex;
             justify-content: flex-start;
             align-items: center;
@@ -270,8 +270,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
 
           .details-panel__content {
-            width: 66%;
-            height: 75%;
+            flex-grow: 1;
+            flex-shrink: 1;
+            flex-basis: 0px;
+            min-height: 0;
             overflow: scroll;
             border-top: 1px solid #5fafff;
           }

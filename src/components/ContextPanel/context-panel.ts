@@ -103,9 +103,9 @@ export function ensureContextPanelDefined(window: TermWindow): void {
       this.innerHTML = `
         <style>
           context-panel {
-            display: block;
-            width: fit-content;
-            min-height: 30%;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
@@ -122,16 +122,20 @@ export function ensureContextPanelDefined(window: TermWindow): void {
           }
 
           .context-panel__title {
+            flex: 0 0 auto;
             display: flex;
             justify-content: flex-start;
             align-items: center;
             color: #5fafff;
-            border: 1px solid transparent;
+            padding: 0 1px;
           }
 
           .context-panel__content {
             overflow: scroll;
-            min-height: 14px;
+            flex-grow: 1;
+            flex-shrink: 1;
+            flex-basis: 0px;
+            min-height: 0;
           }
 
           .context-panel__muted {

@@ -57,8 +57,8 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
             flex-direction: row;
             justify-content: space-between;
             align-items: center;
-            width: 97.5%;
-            height: 5%;
+            flex: 0 0 3px;
+            overflow: hidden;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;

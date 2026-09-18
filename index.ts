@@ -19,7 +19,9 @@ const routes = {
 let cleanup: (() => void) | null = null;
 let currentRoute = RoutesNames.HOME;
 
-term.attach();
+await term.attach();
+// Use the persistent root so switching providers does not leave fullscreen.
+await document.body.requestFullscreen();
 
 function navigate(route: RoutesNames) {
   if (!routes[route]) return;

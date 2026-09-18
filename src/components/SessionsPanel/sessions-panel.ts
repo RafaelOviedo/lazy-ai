@@ -381,9 +381,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
           sessions-panel {
             display: flex;
             flex-direction: column;
-            width: fit-content;
-            height: 30%;
-            min-height: 30%;
+            min-height: 0;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
@@ -411,7 +409,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
             align-items: center;
             flex: 0 0 auto;
             color: #5fafff;
-            border: 1px solid transparent;
+            padding: 0 1px;
           }
 
           .sessions-panel__content {

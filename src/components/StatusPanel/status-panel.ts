@@ -159,8 +159,8 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
         <style>
           status-panel {
             display: block;
-            width: 97.5%;
-            height: 10%;
+            flex: 0 0 4px;
+            overflow: hidden;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
@@ -171,7 +171,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
           }
 
           .status-panel__content {
-            padding: 0.5rem 1ch;
+            padding: 0 1ch;
           }
 
           .status-panel__limit-done {

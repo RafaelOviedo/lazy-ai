@@ -149,9 +149,9 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
       this.innerHTML = `
         <style>
           projects-panel {
-            display: block;
-            width: fit-content;
-            min-height: 10%;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
             border: 1px solid #5fafff;
             border-radius: 5px;
             box-sizing: border-box;
@@ -174,16 +174,20 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
           }
 
           .projects-panel__title {
+            flex: 0 0 auto;
             display: flex;
             justify-content: flex-start;
             align-items: center;
             color: #5fafff;
-            border: 1px solid transparent;
+            padding: 0 1px;
           }
 
           .projects-panel__content {
             overflow: scroll;
-            max-height: 15px;
+            flex-grow: 1;
+            flex-shrink: 1;
+            flex-basis: 0px;
+            min-height: 0;
           }
 
           .projects-panel__item {
