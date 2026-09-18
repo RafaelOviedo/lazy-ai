@@ -131,6 +131,7 @@ export function ensurePromptSessionModalDefined(window: TermWindow): void {
             justify-content: flex-start;
             width: 42%;
             min-height: 20%;
+            max-height: 80%;
             border: 1px solid #fff;
             background: #000;
             border-radius: 5px;
