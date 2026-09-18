@@ -35,7 +35,7 @@ LazyAI gives Claude Code and Codex a single terminal home: browse projects, insp
 - [Usage](#usage)
   - [Keybindings](#keybindings)
 - [Providers and Local Data](#providers-and-local-data)
-- [Adding Demo GIFs](#adding-demo-gifs)
+- [Privacy and Transparency](#privacy-and-transparency)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -154,6 +154,77 @@ Session history is read from these locations:
 Browsing history reads local files. Starting or prompting sessions talks to the selected provider through the Claude Agent SDK or Codex app-server and uses that provider's local authentication. Displayed context and usage information comes from saved records and may lag behind the provider's current state.
 
 Model choices come from local provider metadata. A missing model list can mean missing or stale provider data. Authentication detection checks local credential files and API-key environment variables; it does not validate credentials with the provider.
+
+## Privacy and Transparency
+
+LazyAI is a local, open-source terminal client. It has no backend of its own, no accounts, and no telemetry. Everything you see on screen is read from files that Claude Code and Codex already wrote on your machine.
+
+### What LazyAI does not do
+
+- **No LazyAI server.** There is nowhere for LazyAI to send anything, because no such service exists. No analytics, no telemetry, no crash reporting, no usage pings, no update checks.
+- **No network code of its own.** LazyAI's source contains no HTTP, socket, or WebSocket calls anywhere — no `fetch`, no `node:http`/`node:https`/`node:net`, no third-party analytics SDK.
+- **No tokens stored, copied, or transmitted.** LazyAI never writes a credential anywhere, never displays one, never logs one, and never sends one.
+- **No files written.** LazyAI's own code opens your provider data read-only. It creates no state file, cache, config, or log of its own, and it does not modify your transcripts.
+- **No install-time scripts.** The package has no `postinstall` or other lifecycle hook.
+
+### What LazyAI reads
+
+All of it is local, and all of it is read-only:
+
+| Provider | Files read | Purpose |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | Session history and conversations |
+| Claude Code | `~/.claude/settings.json`, `~/.claude.json` | Model list and signed-in account label |
+| Claude Code | `~/.claude/.credentials.json` | Signed-in check only — see below |
+| Codex | `~/.codex/session_index.jsonl`, `~/.codex/sessions/**/*.jsonl` | Session history and conversations |
+| Codex | `~/.codex/config.toml`, `~/.codex/models_cache.json` | Model list |
+| Codex | `~/.codex/auth.json` | Signed-in check and sign-in mode — see below |
+
+`CLAUDE_CONFIG_DIR` and `CODEX_HOME` relocate these roots, and LazyAI honours both.
+
+### How credentials are handled
+
+To tell a signed-out provider from a signed-in one, LazyAI has to know whether a credential exists. It opens the credential file, checks that a token field is present and non-empty, and keeps **only the resulting yes/no** — `hasCredentials()` in [`src/app/registry/detect-providers.ts`](src/app/registry/detect-providers.ts) returns a `boolean`. The token value is never retained, displayed, logged, or sent anywhere. The same presence-only check applies to the `ANTHROPIC_API_KEY`, `CODEX_API_KEY`, and `OPENAI_API_KEY` environment variables.
+
+Detection is entirely offline: LazyAI never validates a credential against the provider.
+
+Two non-secret labels are read so the status panel can show who you are signed in as: the account email from `~/.claude.json` (`oauthAccount.emailAddress`) and Codex's `auth_mode` from `auth.json`. Both are only ever drawn in your own terminal.
+
+### What does leave your machine
+
+One thing, and only when you ask for it: **the prompts you send.** Starting, resuming, or prompting a session has to reach the model, so LazyAI hands it to the provider you selected:
+
+- **Claude Code** — through Anthropic's official [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), which runs your locally installed `claude` (preferring your own CLI over the copy the SDK bundles).
+- **Codex** — by spawning your local `codex app-server` and speaking JSON-RPC to it over stdin/stdout.
+
+In both cases the request goes to Anthropic or OpenAI exactly as it would if you typed the same prompt into the CLI yourself, authenticated by that provider's own local credentials. LazyAI adds no destination of its own, and browsing history sends nothing at all.
+
+Deleting a session is delegated to the provider too, never done behind its back: Codex deletions go out as a `thread/delete` request to `codex app-server`, and Claude Code session deletion is [deliberately unsupported](src/app/registry/provider-registry.ts) rather than implemented by unlinking transcripts directly.
+
+### Verify it yourself
+
+Please don't take the list above on trust — the whole point of it being open source is that you can check. From a clone of this repo:
+
+```sh
+# No outbound network calls in LazyAI's own code (expect: no matches)
+grep -rnE "fetch\(|node:https?|node:net|node:dgram|node:tls|WebSocket|XMLHttpRequest" src/ index.ts
+
+# No file writes or deletions in LazyAI's own code (expect: no matches)
+grep -rnE "writeFile|appendFile|unlink|rmdir|mkdir|createWriteStream" src/ index.ts
+
+# Every filesystem import is a read-only API
+grep -rn "node:fs" src/ index.ts
+```
+
+The files worth reading in full are short:
+
+- [`src/app/registry/detect-providers.ts`](src/app/registry/detect-providers.ts) — every line of credential handling lives here
+- [`src/providers/claude/claude-session-repository.ts`](src/providers/claude/claude-session-repository.ts) and [`src/providers/codex/codex-session-repository.ts`](src/providers/codex/codex-session-repository.ts) — all transcript reading
+- [`src/providers/claude/claude-sdk-client.ts`](src/providers/claude/claude-sdk-client.ts) and [`src/providers/codex/codex-app-server-client.ts`](src/providers/codex/codex-app-server-client.ts) — the only code that talks to a provider
+
+LazyAI has just two runtime dependencies: `@anthropic-ai/claude-agent-sdk` (Anthropic's official SDK, and the component that talks to Anthropic on your behalf) and `@b9g/termdom` (the terminal renderer). If you audit the installed tree you will see further packages such as `express`, `hono`, and `cors`. Those arrive through the Agent SDK's dependency on `@modelcontextprotocol/sdk`, which ships transports for MCP servers; nothing LazyAI pulls in or calls uses them to send your data anywhere. `@b9g/termdom` depends only on text layout and parsing libraries (`bidi-js`, `css-tree`, `linebreak`, `parse5`, `nwsapi`, `arabic-persian-reshaper`).
+
+Found something that contradicts any of this? Please [open an issue](https://github.com/RafaelOviedo/lazy-ai/issues) — it would be treated as a bug.
 
 ## Contributing
 
