@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 
 import type { UsageLimit, UsageLimitSnapshot } from "../../entities/provider/index.js";
 import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
+import { isSameProjectPath } from "../../shared/lib/paths/index.js";
 import type {
   CodexSessionRepositoryOptions,
   SessionContext,
@@ -48,7 +49,7 @@ export class CodexSessionRepository implements SessionReader {
       const sessionContext = await this.readSessionContext(sessionFilePath);
 
       if (!sessionContext?.cwd) continue;
-      if (projectPath && sessionContext.cwd !== projectPath) continue;
+      if (projectPath && !isSameProjectPath(sessionContext.cwd, projectPath)) continue;
 
       const updatedAt = this.resolveLatestTimestamp(indexRow?.updated_at, sessionContext.updatedAt);
 

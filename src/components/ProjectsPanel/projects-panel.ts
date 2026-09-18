@@ -1,6 +1,6 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { Keybindings } from "../../app/types.js";
-import { normalizeProjectPath } from "../../shared/lib/paths/index.js";
+import { isSameProjectPath, normalizeProjectPath } from "../../shared/lib/paths/index.js";
 
 import type { ProjectReader, ProjectSummary } from "../../entities/project/index.js";
 import type { ProjectSelectionChangeDetail, TermWindow } from "./types.js";
@@ -127,7 +127,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       try {
         this.loadError = null;
-        this.projects = await projectReader.listProjects();
+        this.projects = this.withCurrentProject(await projectReader.listProjects());
         this.selectedProjectIndex = this.getPreferredProjectIndex();
         this.syncProjectPathToSelection();
       } catch {
@@ -254,7 +254,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
 
       if (!selectedProject) return;
 
-      if (this.currentProjectPathValue === selectedProject.path) {
+      if (isSameProjectPath(this.currentProjectPathValue, selectedProject.path)) {
         this.showAlreadySelectedStatus(selectedProject.path);
         return;
       }
@@ -362,6 +362,37 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Keeps the directory lazy-ai was launched from selectable even before the
+     * active provider has written history there.
+     */
+    private withCurrentProject(projects: ProjectSummary[]): ProjectSummary[] {
+      if (!this.projectPathValue) return projects;
+      if (projects.some((project) => isSameProjectPath(project.path, this.projectPathValue))) {
+        return projects;
+      }
+
+      return [
+        {
+          path: this.projectPathValue,
+          name: this.readProjectName(this.projectPathValue),
+          sessionCount: 0,
+          updatedAt: "",
+          relativeUpdated: "No sessions",
+          status: "current",
+        },
+        ...projects,
+      ];
+    }
+
+    /**
+     * Pulls a display name from a path without depending on Node path rules in
+     * the custom element.
+     */
+    private readProjectName(projectPath: string): string {
+      return projectPath.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).at(-1) ?? projectPath;
+    }
+
+    /**
      * Keeps the public project path aligned with the current selection.
      */
     private syncProjectPathToSelection(): void {
@@ -427,11 +458,11 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Builds the trailing status label for one project row.
      */
     private renderProjectStatusMarkup(projectPath: string): string {
-      if (projectPath === this.alreadySelectedProjectPath) {
+      if (this.alreadySelectedProjectPath && isSameProjectPath(projectPath, this.alreadySelectedProjectPath)) {
         return ` · <span class="projects-panel__status-already-selected">Already selected</span>`;
       }
 
-      if (projectPath === this.currentProjectPathValue) {
+      if (this.currentProjectPathValue && isSameProjectPath(projectPath, this.currentProjectPathValue)) {
         return ` · <span class="projects-panel__status-current">Current</span>`;
       }
 

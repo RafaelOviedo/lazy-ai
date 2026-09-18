@@ -13,6 +13,7 @@ import { type KeybindingsPanelElement } from "../components/KeybindingsPanel/typ
 
 import { PageProps } from "./types.js";
 import { Keybindings } from "../app/types.js";
+import { isSameProjectPath } from "../shared/lib/paths/index.js";
 
 import { ensureSessionsPanelDefined } from "../components/SessionsPanel/sessions-panel.js";
 import { ensureProjectsPanelDefined } from "../components/ProjectsPanel/projects-panel.js";
@@ -326,7 +327,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function viewSession(session: SessionSummary) {
-    if (session.projectPath !== selectedProjectPath) return;
+    if (!isSameProjectPath(session.projectPath, selectedProjectPath)) return;
     detailsPanel?.viewSession(session);
   }
 
@@ -371,7 +372,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     projectLoadError = customEvent.detail.error;
 
-    if (detailsPanel && selectedProjectPath !== (selectedProject?.path ?? projectPath)) {
+    if (detailsPanel && !isSameProjectPath(selectedProjectPath, selectedProject?.path ?? projectPath)) {
       detailsPanel.viewedSession = null;
     }
 
@@ -381,7 +382,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       selectedSession = null;
       loadError = null;
 
-      if (sessionsPanel && sessionsPanel.projectPath !== selectedProject.path) {
+      if (sessionsPanel && !isSameProjectPath(sessionsPanel.projectPath, selectedProject.path)) {
         sessionsPanel.projectPath = selectedProject.path;
       }
     } else {
@@ -430,7 +431,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function onSessionViewRequest(event: Event) {
     if (getModalConfig().isActive) return;
     const { session, projectPath } = (event as CustomEvent<SessionViewRequestDetail>).detail;
-    if (projectPath === selectedProjectPath) viewSession(session);
+    if (isSameProjectPath(projectPath, selectedProjectPath)) viewSession(session);
   }
 
   function onSessionResumeRequest(event: Event) {

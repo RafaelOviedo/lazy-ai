@@ -1,3 +1,6 @@
+#!/usr/bin/env node
+
+import { realpath } from "node:fs/promises";
 import { TermDOM } from '@b9g/termdom';
 import { renderHome } from './src/pages/index.js';
 
@@ -5,7 +8,7 @@ import { RoutesNames } from './src/pages/types.js';
 import { detectProviderStatuses, resolvePreferredProvider } from './src/app/registry/index.js';
 import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from "./src/entities/provider/index.js";
 
-const projectPath = process.cwd();
+const projectPath = await realpath(process.cwd()).catch(() => process.cwd());
 const term = new TermDOM();
 const { document, window } = term;
 
