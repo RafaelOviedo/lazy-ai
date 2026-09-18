@@ -6,9 +6,7 @@ Browse projects and conversations, pick a provider and model, and start or conti
 
 > Early development (`0.0.1`). Run from source using the instructions below; the repository does not yet configure a global `lazyai` command.
 
-<!-- Once the asset exists, uncomment this preview:
-![Lazy AI: browsing projects, resuming a session, and switching providers](docs/images/lazy-ai-demo.gif)
--->
+![Lazy AI: starting new session, deleting session, opening models modal, opening keybindings modal](docs/gifs/lazy-ai.gif)
 
 ## Features
 
