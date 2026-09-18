@@ -65,7 +65,7 @@ When Codex or Claude Code asks for tool permission, LazyAI opens an in-terminal 
 
 Session-wide approval is only offered when the provider says the request supports it. LazyAI asks Codex to route escalations to this modal, so approvals appear here rather than following the `approval_policy` in `~/.codex/config.toml`.
 
-<!-- TODO: Add tool permission GIF at docs/gifs/approve-claude-code-tools.gif -->
+![LazyAI: approving Codex or Claude Code tool requests](docs/gifs/approve-codex-or-claude-code-tools.gif)
 
 ### Inspect Context and Usage
 
