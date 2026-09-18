@@ -29,7 +29,7 @@ LazyAI gives Claude Code and Codex a single terminal home: browse projects, insp
   - [Browse Projects and Sessions](#browse-projects-and-sessions)
   - [Resume and Prompt Sessions](#resume-and-prompt-sessions)
   - [Switch Providers and Models](#switch-providers-and-models)
-  - [Approve Claude Code Tools](#approve-claude-code-tools)
+  - [Approve Codex or Claude Code Tools](#approve-codex-or-claude-code-tools)
   - [Inspect Context and Usage](#inspect-context-and-usage)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -61,7 +61,9 @@ Press `m` to open the provider and model picker. LazyAI detects usable local pro
 
 ### Approve Codex or Claude Code Tools
 
-When Codex or Claude Code asks for tool permission, LazyAI opens an in-terminal approval modal. Choose whether to allow once, allow for the session when available, or deny.
+When Codex or Claude Code asks for tool permission, LazyAI opens an in-terminal approval modal. Choose whether to allow once, allow for the session when available, or deny. `j` / `k` move between the choices, `Enter` confirms, and `Esc` denies.
+
+Session-wide approval is only offered when the provider says the request supports it. LazyAI asks Codex to route escalations to this modal, so approvals appear here rather than following the `approval_policy` in `~/.codex/config.toml`.
 
 <!-- TODO: Add tool permission GIF at docs/gifs/approve-claude-code-tools.gif -->
 
@@ -138,7 +140,7 @@ Dashboard shortcuts apply while no modal is open.
 | Start, resume, prompt, and interrupt | Yes | Yes |
 | Provider and model selection | Yes | Yes |
 | Delete sessions | Not supported | Yes, with confirmation |
-| Tool permission modal | Yes | Not implemented |
+| Tool permission modal | Yes | Yes, for commands and file edits |
 | Token/context information | When present in transcripts | When present in transcripts |
 | Usage-limit snapshots | Not available | When present in saved telemetry |
 
