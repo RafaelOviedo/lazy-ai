@@ -155,7 +155,7 @@ export function ensureToolPermissionModalDefined(window: TermWindow): void {
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            width: 46%;
+            width: 35%;
             min-height: 30%;
             border: 1px solid #d7ba7d;
             background: #000;
@@ -209,7 +209,7 @@ export function ensureToolPermissionModalDefined(window: TermWindow): void {
 
         <legend class="tool-permission-modal__title">Permission required</legend>
         <div class="tool-permission-modal__prompt">${escapeHtml(request?.title ?? "A session wants to use a tool")}</div>
-        ${this.renderPathMarkup()}
+        <div style="margin-bottom: 1px;">${this.renderPathMarkup()}</div>
         ${this.renderDetailMarkup()}
         <div class="tool-permission-modal__choices">${this.renderChoicesMarkup()}</div>
         ${this.renderQueueMarkup()}
