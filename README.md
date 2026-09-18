@@ -43,21 +43,21 @@ LazyAI gives Claude Code and Codex a single terminal home: browse projects, insp
 
 LazyAI reads local Claude Code and Codex history, groups sessions by project, and lets you jump through old work with `h`, `j`, `k`, `l`, and `Space`.
 
-<!-- TODO: Add project/session browsing GIF at docs/gifs/browse-projects-and-sessions.gif -->
+![LazyAI: browsing projects and sessions](docs/gifs/browse-projects-and-sessions.gif)
 
 ### Resume and Prompt Sessions
 
 Press `Space` on a session to resume it, `n` to start a new one in the selected project, or `p` to send a follow-up prompt to the active session. The details panel follows the conversation as new messages arrive.
 
-<!-- TODO: Add resume/prompt GIF at docs/gifs/resume-and-prompt-sessions.gif -->
+![LazyAI: resuming and prompting sessions](docs/gifs/resume-and-prompt-sessions.gif)
 
 ### Switch Providers and Models
 
 Press `m` to open the provider and model picker. LazyAI detects usable local providers at startup and rebuilds the dashboard when you switch between Claude Code and Codex.
 
-<!-- TODO: Add model picker GIF at docs/gifs/switch-providers-and-models.gif -->
+![LazyAI: switching providers and models](docs/gifs/switch-providers-and-models.gif)
 
-### Approve Claude Code Tools
+### Approve Codex or Claude Code Tools
 
 When Claude Code asks for tool permission, LazyAI opens an in-terminal approval modal. Choose whether to allow once, allow for the session when available, or deny.
 
@@ -67,7 +67,7 @@ When Claude Code asks for tool permission, LazyAI opens an in-terminal approval 
 
 The context panel shows session metadata, token information when transcripts provide it, and Codex usage-limit snapshots when saved telemetry is available.
 
-<!-- TODO: Add context/usage GIF at docs/gifs/inspect-context-and-usage.gif -->
+![LazyAI: inspecting context and usage](docs/gifs/inspect-context-and-usage.gif)
 
 ## Installation
 
