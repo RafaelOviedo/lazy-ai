@@ -136,6 +136,8 @@ export function ensureContextPanelDefined(window: TermWindow): void {
             flex-shrink: 1;
             flex-basis: 0px;
             min-height: 0;
+            padding-left: 1px;
+            padding-top: 1px;
           }
 
           .context-panel__muted {
@@ -174,6 +176,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
           <div>~/.codex session history</div>
           <div class="context-panel__muted" style="margin-top: 0.5rem;">Project</div>
           <div>${escapeHtml(this.projectNameValue)}</div>
+          <div> · </div>
           <div class="context-panel__muted" style="margin-top: 0.5rem;">Path</div>
           <div>${escapeHtml(this.projectPathValue)}</div>
         `;
@@ -181,11 +184,9 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
       return `
         <div>
-          <div style="display: flex;">
-            <div class="context-panel__muted">Model: </div> <div>${escapeHtml(this.selectedSessionValue.model)}</div>
-            <div> | </div>
-            <div class="context-panel__muted">Updated: </div> <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
-          </div>
+          <div class="context-panel__muted">Model: </div> <div>${escapeHtml(this.selectedSessionValue.model)}</div>
+          <div> · </div>
+          <div class="context-panel__muted">Updated: </div> <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
           <div> · </div>
           ${this.renderContextUsageMarkup()}
         </div>

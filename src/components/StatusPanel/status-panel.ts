@@ -159,7 +159,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
         <style>
           status-panel {
             display: block;
-            flex: 0 0 4px;
+            flex: 0 0 5px;
             overflow: hidden;
             border: 1px solid #5fafff;
             border-radius: 5px;
@@ -168,6 +168,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
 
           .status-panel__title {
             color: #5fafff;
+            padding-top: 1px;
           }
 
           .status-panel__content {
