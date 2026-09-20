@@ -5,5 +5,5 @@ export type ModelPickerModalPayload = {
   activeProvider: ActiveProviderSelection;
   groups: ProviderModelGroup[];
   onCancel?: () => void;
-  onSelect(model: ModelOption): void;
+  onSelect(model: ModelOption, effort: string | null): void;
 };

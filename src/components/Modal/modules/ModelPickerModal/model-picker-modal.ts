@@ -20,6 +20,7 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
     private closeModalValue: () => void = () => { };
     private payloadValue: ModelPickerModalPayload | undefined;
     private selectedIndex = 0;
+    private selectedEffort: string | null = null;
     private readonly onKeyDown = (event: KeyboardEvent): void => {
       const key = event.key.toLowerCase();
 
@@ -32,6 +33,12 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
       if (key === Keybindings.K || key === "arrowup") {
         event.preventDefault();
         this.moveSelection(-1);
+        return;
+      }
+
+      if (key === Keybindings.H || key === "arrowleft" || key === Keybindings.L || key === "arrowright") {
+        event.preventDefault();
+        this.moveEffort(key === Keybindings.H || key === "arrowleft" ? -1 : 1);
       }
     };
 
@@ -53,6 +60,8 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
 
       this.payloadValue = value;
       this.selectedIndex = this.resolveInitialSelectionIndex();
+      this.selectedEffort = value?.activeProvider.effort ?? null;
+      this.validateEffort();
 
       if (this.isConnected) {
         this.render();
@@ -76,7 +85,7 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
 
       if (!model) return;
 
-      this.payloadValue?.onSelect(model);
+      this.payloadValue?.onSelect(model, this.selectedEffort);
     }
 
     cancelModal(): void {
@@ -128,13 +137,36 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
       if (nextIndex === this.selectedIndex) return;
 
       this.selectedIndex = nextIndex;
+      this.validateEffort();
       this.render();
       this.revealSelectedModel();
     }
 
-    /**
-     * Keeps the highlighted model inside the scrollable area.
-     */
+    private validateEffort(): void {
+      const levels = this.getModels()[this.selectedIndex]?.supportedEfforts ?? [];
+      if (this.selectedEffort && !levels.includes(this.selectedEffort)) this.selectedEffort = null;
+    }
+
+    private moveEffort(offset: number): void {
+      const levels: (string | null)[] = [null, ...(this.getModels()[this.selectedIndex]?.supportedEfforts ?? [])];
+      const index = levels.indexOf(this.selectedEffort);
+      this.selectedEffort = levels[Math.min(Math.max(index + offset, 0), levels.length - 1)];
+      this.render();
+      this.revealSelectedModel();
+    }
+
+    private renderEffortMarkup(): string {
+      const levels = this.getModels()[this.selectedIndex]?.supportedEfforts ?? [];
+      if (!levels.length) return "Thinking level unavailable";
+      return `Thinking level: ${[null, ...levels].map((effort) => {
+        const label = effort ? effort.charAt(0).toUpperCase() + effort.slice(1) : "Default";
+        return effort === this.selectedEffort
+          ? `<span class="model-picker-modal__effort-selected">[${escapeHtml(label)}]</span>`
+          : escapeHtml(label);
+      }).join(" · ")}`;
+    }
+
+    /** Keeps the highlighted model inside the scrollable area. */
     private revealSelectedModel(): void {
       const selectedItem = this.querySelector<HTMLElement>("[data-selected='true']");
 
@@ -171,6 +203,8 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
             display: flex;
             flex-direction: column;
             overflow-y: auto;
+            min-height: 0;
+            flex-shrink: 1;
           }
 
           .model-picker-modal__provider {
@@ -207,11 +241,23 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
             color: #d7ba7d;
             margin-top: 1px;
           }
+
+          .model-picker-modal__effort {
+            color: #8aa4bf;
+            margin-top: 1px;
+            flex-shrink: 0;
+          }
+
+          .model-picker-modal__effort-selected {
+            color: #fff;
+            font-weight: bold;
+          }
         </style>
 
         <legend class="model-picker-modal__title">Providers and models</legend>
         <div class="model-picker-modal__content">${this.renderGroupsMarkup(groups)}</div>
-        <div class="model-picker-modal__actions">j/k to move, Enter to select, Esc to cancel</div>
+        <div class="model-picker-modal__effort">${this.renderEffortMarkup()}</div>
+        <div class="model-picker-modal__actions">j/k ↑/↓ model · h/l ←/→ thinking<br><br>Enter apply · Esc cancel</div>
       `;
     }
 
@@ -233,6 +279,7 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
 
           return `
             <div class="model-picker-modal__provider">${escapeHtml(group.label)}</div>
+            <br>
             ${modelsMarkup}
           `;
         })
@@ -264,7 +311,7 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
     private renderModelMeta(model: ModelOption): string {
       const contextWindow = model.contextWindow ? `${Math.round(model.contextWindow / 1000)}k ctx` : "";
 
-      return [model.defaultEffort, contextWindow].filter(Boolean).join(" · ");
+      return [model.defaultEffort ? `default: ${model.defaultEffort}` : "", contextWindow].filter(Boolean).join(" · ");
     }
   }
 

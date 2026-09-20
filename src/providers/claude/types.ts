@@ -21,6 +21,7 @@ export type ClaudeSdkClientOptions = {
    */
   canResumeSession?(sessionId: string, projectPath?: string): Promise<boolean>;
   model?: string | null;
+  effort?: string | null;
 };
 
 export type ClaudeTranscriptUsage = {

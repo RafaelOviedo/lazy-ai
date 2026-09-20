@@ -11,6 +11,7 @@ export type CodexModelSourceOptions = {
 
 export type CodexAppServerClientOptions = {
   model?: string | null;
+  effort?: string | null;
 };
 
 /**
@@ -82,6 +83,7 @@ export type CodexModelsCacheEntry = {
   display_name?: string;
   description?: string;
   default_reasoning_level?: string;
+  supported_reasoning_levels?: { effort?: string }[];
   visibility?: string;
   priority?: number;
   context_window?: number;

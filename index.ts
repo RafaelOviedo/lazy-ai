@@ -44,7 +44,9 @@ if (preferredProvider && preferredProvider !== getActiveProvider().providerId) {
 }
 
 // Switching provider rebuilds the page so every panel reads from the new source.
-subscribeActiveProvider(() => {
+subscribeActiveProvider((next, previous) => {
+  // Effort changes are applied by the current page without disposing sessions.
+  if (next.providerId === previous.providerId && next.modelId === previous.modelId) return;
   queueMicrotask(() => render());
 });
 

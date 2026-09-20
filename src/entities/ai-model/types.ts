@@ -6,6 +6,7 @@ export type ModelOption = {
   label: string;
   description?: string;
   defaultEffort?: string;
+  supportedEfforts?: string[];
   contextWindow?: number;
 };
 

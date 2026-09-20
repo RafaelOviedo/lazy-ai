@@ -2,7 +2,7 @@ import type { ModelOption } from "../entities/ai-model/index.js";
 import type { UsageLimitSnapshot } from "../entities/provider/index.js";
 import type { SessionSummary } from "../entities/session/index.js";
 import { createProviderProfile, createUnavailableRuntimeClient, listProviderModels, resolveDefaultModel } from "../app/registry/index.js";
-import { getActiveProvider, setActiveProvider } from "../entities/provider/index.js";
+import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from "../entities/provider/index.js";
 
 import { type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail, type SessionViewRequestDetail, type SessionsPanelElement } from "../components/SessionsPanel/types.js";
 import { type ProjectSelectionChangeDetail, type ProjectsPanelElement } from "../components/ProjectsPanel/types.js";
@@ -43,11 +43,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   ensureModalDefined(window);
 
   const { closeModal, getModalConfig, openModal, subscribe: subscribeModal } = useModal();
-  const activeProvider = getActiveProvider();
-  const providerProfile = createProviderProfile(activeProvider.providerId, activeProvider.modelId);
+  let activeProvider = getActiveProvider();
+  const providerProfile = createProviderProfile(activeProvider.providerId, activeProvider.modelId, activeProvider.effort ?? null);
   const sessionReader = providerProfile.sessions;
   const providerCapabilities = providerProfile.capabilities;
   const appServerClient = providerProfile.client ?? createUnavailableRuntimeClient(providerProfile.label);
+  const unsubscribeActiveProvider = subscribeActiveProvider((next, previous) => {
+    if (next.providerId !== previous.providerId || next.modelId !== previous.modelId) return;
+    appServerClient.setEffort(next.effort ?? null);
+    activeProvider = next;
+    syncStatusPanel();
+  });
 
   document.body.innerHTML = `
     <div class="card">
@@ -161,6 +167,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let loadError: string | null = null;
   let projectLoadError: string | null = null;
   let defaultModelLabel: string | null = null;
+  let defaultModelId: string | null = null;
+  let isModelPickerLoading = false;
+  let isDisposed = false;
   let pendingActionError: { message: string; title: string } | null = null;
 
   panel1?.focus();
@@ -367,6 +376,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     statusPanel.activeProviderLabel = providerProfile.label;
     statusPanel.activeModelLabel = activeProvider.modelLabel ?? defaultModelLabel;
     statusPanel.activeModelIsDefault = !activeProvider.modelId;
+    statusPanel.activeEffort = activeProvider.effort ?? null;
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;
@@ -422,7 +432,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (activeProvider.modelId) return;
 
     try {
-      defaultModelLabel = (await resolveDefaultModel(activeProvider.providerId))?.label ?? null;
+      const model = await resolveDefaultModel(activeProvider.providerId);
+      defaultModelLabel = model?.label ?? null;
+      defaultModelId = model?.id ?? null;
     } catch {
       defaultModelLabel = null;
     }
@@ -515,18 +527,39 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     });
   }
 
-  function openModelPickerModal() {
-    if (hasOngoingTurn()) return;
+  function isModelSelectionBlocked(): boolean {
+    return isDisposed || hasOngoingTurn() || sessionStartController.isSessionStarting()
+      || sessionPromptController.isSessionPrompting();
+  }
 
-    void listProviderModels().then((groups) => {
+  function openModelPickerModal() {
+    if (isModelSelectionBlocked() || isModelPickerLoading) return;
+    isModelPickerLoading = true;
+
+    // Resolve the default before highlighting it, even if m is pressed during boot.
+    void Promise.all([listProviderModels(), refreshDefaultModelLabel()]).then(([groups]) => {
+      if (isModelSelectionBlocked() || getModalConfig().isActive) return;
+
       openModal(ModalName.modelPickerModal, {
-        activeProvider: getActiveProvider(),
+        activeProvider: { ...activeProvider, modelId: activeProvider.modelId ?? defaultModelId },
         groups,
-        onSelect: (model: ModelOption) => {
+        onSelect: (model: ModelOption, effort: string | null) => {
+          if (isModelSelectionBlocked()) return;
           closeModal();
-          setActiveProvider({ modelId: model.id, modelLabel: model.label, providerId: model.providerId });
+          const keepDefaultModel = activeProvider.modelId === null && model.providerId === activeProvider.providerId
+            && model.id === defaultModelId;
+          setActiveProvider({
+            modelId: keepDefaultModel ? null : model.id,
+            modelLabel: keepDefaultModel ? null : model.label,
+            providerId: model.providerId,
+            effort,
+          });
         },
       });
+    }).catch(() => {
+      if (!isDisposed) reportActionError("Failed to load provider models.");
+    }).finally(() => {
+      isModelPickerLoading = false;
     });
   }
 
@@ -716,6 +749,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   syncStatusPanel();
 
   return () => {
+    isDisposed = true;
+    unsubscribeActiveProvider();
     sessionDeleteController.dispose();
     sessionPromptController.dispose();
     sessionResumeController.dispose();

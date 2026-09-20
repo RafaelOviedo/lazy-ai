@@ -57,6 +57,10 @@ Press `Space` on a session to resume it, `n` to start a new one in the selected 
 
 Press `m` to open the provider and model picker. LazyAI detects usable local providers at startup and rebuilds the dashboard when you switch between Claude Code and Codex.
 
+Move between models with `j` / `k`, and choose a **Thinking level** with `h` / `l`. `Enter` applies both choices; `Esc` discards your changes. Available levels depend on the model. **Default** leaves effort to the provider; after an explicit override, it restores the session's original Codex effort or relaunches the same Claude session without an effort override. Changing only the thinking level keeps your active session and applies to the next prompt. Choices last until you exit LazyAI, and the status bar shows the selected level.
+
+Codex levels come from its local model cache. Claude levels use the documented [Claude Code model capabilities](https://code.claude.com/docs/en/model-config#adjust-effort-level); unknown models show “Thinking level unavailable.” Provider settings and organization policies can limit the effort actually used.
+
 ![LazyAI: switching providers and models](docs/gifs/switch-providers-and-models.gif)
 
 ### Approve Codex or Claude Code Tools
@@ -128,6 +132,7 @@ Dashboard shortcuts apply while no modal is open.
 | `?` | Dashboard | Open keybinding help |
 | `q` | Dashboard | Quit |
 | `j` / `k` | Model picker, tool permissions | Move between choices |
+| `h` / `l` | Model picker | Change thinking level for the highlighted model |
 | `Enter` | Prompts, picker, confirmations | Submit the prompt or confirm the selected action |
 | `Ctrl+J` | Prompt input | Insert a new line |
 | `Esc` | Modals | Cancel or close; deny a pending tool permission request |

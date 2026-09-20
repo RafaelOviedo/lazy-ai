@@ -4,9 +4,10 @@ export type ActiveProviderSelection = {
   modelId: string | null;
   modelLabel: string | null;
   providerId: ProviderId;
+  effort?: string | null;
 };
 
-type ActiveProviderListener = () => void;
+type ActiveProviderListener = (next: ActiveProviderSelection, previous: ActiveProviderSelection) => void;
 
 const listeners = new Set<ActiveProviderListener>();
 
@@ -27,12 +28,14 @@ export function getActiveProvider(): ActiveProviderSelection {
  * Points the app at a provider and model, notifying subscribers when it changes.
  */
 export function setActiveProvider(next: ActiveProviderSelection): void {
-  if (selection.providerId === next.providerId && selection.modelId === next.modelId) return;
+  if (selection.providerId === next.providerId && selection.modelId === next.modelId
+    && (selection.effort ?? null) === (next.effort ?? null)) return;
 
+  const previous = selection;
   selection = next;
 
   for (const listener of [...listeners]) {
-    listener();
+    listener(next, previous);
   }
 }
 

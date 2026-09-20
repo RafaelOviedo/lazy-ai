@@ -10,6 +10,7 @@ export function createUnavailableRuntimeClient(providerLabel: string): ProviderR
   };
 
   return {
+    setEffort: unavailable,
     deleteThread: unavailable,
     dispose: () => { },
     interruptTurn: unavailable,

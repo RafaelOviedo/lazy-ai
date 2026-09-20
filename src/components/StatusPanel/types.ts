@@ -6,6 +6,7 @@ import type { SessionSummary } from "../../entities/session/index.js";
 export type TermWindow = TermDOM["window"];
 
 export type StatusPanelElement = HTMLElement & {
+  activeEffort: string | null;
   activeModelIsDefault: boolean;
   activeModelLabel: string | null;
   activeProviderLabel: string;

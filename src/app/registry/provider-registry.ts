@@ -53,7 +53,7 @@ const providerCapabilities: Record<ProviderId, ProviderCapabilities> = {
 /**
  * Builds a fresh profile for one provider. Callers own disposing its client.
  */
-export function createProviderProfile(providerId: ProviderId, modelId: string | null = null): ProviderProfile {
+export function createProviderProfile(providerId: ProviderId, modelId: string | null = null, effort: string | null = null): ProviderProfile {
   if (providerId === "claude-code") {
     const sessions = new ClaudeSessionRepository({ claudeRootPath: providerHomePath("claude-code") });
 
@@ -62,6 +62,7 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
       client: new ClaudeSdkClient({
         canResumeSession: (sessionId, projectPath) => sessions.hasSession(sessionId, projectPath),
         model: modelId,
+        effort,
       }),
       id: "claude-code",
       label: providerLabels["claude-code"],
@@ -74,7 +75,7 @@ export function createProviderProfile(providerId: ProviderId, modelId: string | 
 
   return {
     capabilities: providerCapabilities.codex,
-    client: new CodexAppServerClient({ model: modelId }),
+    client: new CodexAppServerClient({ model: modelId, effort }),
     id: "codex",
     label: providerLabels.codex,
     projects: new SessionGroupingProjectReader(sessions),

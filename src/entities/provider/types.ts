@@ -55,6 +55,8 @@ export type ProviderCapabilities = {
  * Drives live turns for one provider. Null on a provider that can only be read.
  */
 export interface ProviderRuntimeClient {
+  /** Selects the effort for future turns; null restores provider defaults. */
+  setEffort(effort: string | null): void;
   deleteThread(threadId: string): Promise<unknown>;
   dispose(): void;
   interruptTurn(threadId: string, turnId: string): Promise<void>;

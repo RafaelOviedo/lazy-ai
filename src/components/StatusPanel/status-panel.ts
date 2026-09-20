@@ -20,6 +20,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
     private activeProviderLabelValue = "";
     private activeModelLabelValue: string | null = null;
     private activeModelIsDefaultValue = false;
+    private activeEffortValue: string | null = null;
     private loadErrorValue: string | null = null;
     private projectLoadErrorValue: string | null = null;
     private selectedSessionValue: SessionSummary | null = null;
@@ -71,9 +72,13 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
       }
     }
 
-    /**
-     * Updates the session loading error.
-     */
+    set activeEffort(value: string | null) {
+      if (this.activeEffortValue === value) return;
+      this.activeEffortValue = value;
+      if (this.isConnected) this.render();
+    }
+
+    /** Updates the session loading error. */
     set loadError(value: string | null) {
       if (this.loadErrorValue === value) return;
 
@@ -175,6 +180,13 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
             padding: 0 1ch;
           }
 
+          /* Compact dashboards have room for one line inside the border. */
+          @media (max-height: 30px) {
+            .status-panel__title {
+              display: none;
+            }
+          }
+
           .status-panel__limit-done {
             color: #d7ba7d;
           }
@@ -230,7 +242,8 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
 
       const defaultSuffix = this.activeModelIsDefaultValue ? " (default)" : "";
 
-      return `${escapeHtml(`${providerLabel} · ${this.activeModelLabelValue}${defaultSuffix}`)} · `;
+      const effort = this.activeEffortValue ?? "default";
+      return `${escapeHtml(`${providerLabel} · ${this.activeModelLabelValue}${defaultSuffix} · thinking: ${effort}`)} · `;
     }
 
     /**

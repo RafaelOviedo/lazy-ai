@@ -110,6 +110,8 @@ export type CodexAppServerTurnCompletionResult = {
 };
 
 type ThreadResumeResponse = {
+  reasoningEffort?: string | null;
+  model?: string;
   thread?: {
     id?: string;
     sessionId?: string;
@@ -117,6 +119,8 @@ type ThreadResumeResponse = {
 };
 
 type ThreadStartResponse = {
+  reasoningEffort?: string | null;
+  model?: string;
   thread?: {
     id?: string;
     sessionId?: string;
@@ -153,6 +157,12 @@ const fileChangeItemCacheLimit = 200;
 
 export class CodexAppServerClient {
   private readonly model: string | null;
+  private effort: string | null;
+  private readonly threadEfforts = new Map<string, {
+    defaultEffort: string | null;
+    model: string | null;
+    overridden: boolean;
+  }>();
   private process: ChildProcessWithoutNullStreams | null = null;
   private stdoutReader: ReadlineInterface | null = null;
   private initializePromise: Promise<void> | null = null;
@@ -170,6 +180,11 @@ export class CodexAppServerClient {
 
   constructor(options: CodexAppServerClientOptions = {}) {
     this.model = options.model ?? null;
+    this.effort = options.effort ?? null;
+  }
+
+  setEffort(effort: string | null): void {
+    this.effort = effort;
   }
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
@@ -184,10 +199,13 @@ export class CodexAppServerClient {
       cwd,
       approvalPolicy,
       serviceName: "lazy-ai",
+      ...(this.model ? { model: this.model } : {}),
     });
 
+    const resumedId = result.thread?.id ?? result.thread?.sessionId ?? threadId;
+    this.rememberThreadEffort(resumedId, result);
     return {
-      threadId: result.thread?.id ?? result.thread?.sessionId ?? threadId,
+      threadId: resumedId,
     };
   }
 
@@ -221,6 +239,7 @@ export class CodexAppServerClient {
       throw new Error("Codex app-server did not return a thread id.");
     }
 
+    this.rememberThreadEffort(threadId, result);
     return {
       threadId,
       sessionId: result.thread?.sessionId ?? threadId,
@@ -230,6 +249,28 @@ export class CodexAppServerClient {
   async startTurn(threadId: string, prompt: string, cwd?: string): Promise<CodexAppServerTurnStartResult> {
     await this.initialize();
 
+    const effort = this.effort;
+    const threadEffort = this.threadEfforts.get(threadId);
+    // turn/start effort is sticky. Save the original provider choice before the
+    // first override so selecting Default can restore it on this same thread.
+    if (threadEffort && effort && !threadEffort.defaultEffort) {
+      const config = await this.request<{ config?: { model_reasoning_effort?: string | null } }>("config/read", { cwd });
+
+      threadEffort.defaultEffort = config.config?.model_reasoning_effort ?? null;
+
+      if (!threadEffort.defaultEffort) {
+        let cursor: string | null = null;
+        do {
+          const models: { data: { model: string; defaultReasoningEffort: string }[]; nextCursor?: string | null }
+            = await this.request("model/list", { cursor });
+          threadEffort.defaultEffort = models.data.find((model) => model.model === threadEffort.model)?.defaultReasoningEffort ?? null;
+          cursor = models.nextCursor ?? null;
+        } while (!threadEffort.defaultEffort && cursor);
+      }
+
+      if (!threadEffort.defaultEffort) throw new Error("Codex did not report a default thinking level for this model.");
+    }
+    const turnEffort = effort ?? (threadEffort?.overridden ? threadEffort.defaultEffort : null);
     const result = await this.request<TurnStartResponse>("turn/start", {
       threadId,
       input: [{
@@ -238,6 +279,8 @@ export class CodexAppServerClient {
         text_elements: [],
       }],
       cwd,
+      ...(this.model ? { model: this.model } : {}),
+      ...(turnEffort ? { effort: turnEffort } : {}),
     });
 
     const turnId = result.turn?.id;
@@ -246,9 +289,20 @@ export class CodexAppServerClient {
       throw new Error("Codex app-server did not return a turn id.");
     }
 
+    if (threadEffort) threadEffort.overridden = effort !== null;
     return {
       turnId,
     };
+  }
+
+  private rememberThreadEffort(threadId: string, result: ThreadStartResponse | ThreadResumeResponse): void {
+    if (this.threadEfforts.has(threadId)) return;
+
+    this.threadEfforts.set(threadId, {
+      defaultEffort: result.reasoningEffort ?? null,
+      model: result.model ?? this.model,
+      overridden: false,
+    });
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {
@@ -296,6 +350,7 @@ export class CodexAppServerClient {
   }
 
   dispose(): void {
+    this.threadEfforts.clear();
     // Answered before the process goes away so Codex is never left waiting on a
     // prompt nothing can show any more.
     this.declinePendingServerRequests();

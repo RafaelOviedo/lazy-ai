@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getClaudeSupportedEfforts } from "./claude-effort.js";
 
 import type { ModelOption } from "../../entities/ai-model/index.js";
 import type { ClaudeModelAccessEntry, ClaudeModelSourceOptions } from "./types.js";
@@ -110,6 +111,7 @@ export class ClaudeModelSource {
         id: apiName,
         providerId: "claude-code" as const,
         label: description.label,
+        supportedEfforts: getClaudeSupportedEfforts(apiName),
       }));
   }
 

@@ -74,7 +74,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
         <div style="display: flex; gap: 1px;">
           <span>Keybindings:</span>
           <div>
-            <span class="keybindings-panel__key">Move: h/l/j/k ↑ ↓</span> <span>|</span>
+            <span class="keybindings-panel__key">Move: h/l/j/k</span> <span>|</span>
             <span class="keybindings-panel__key">${this.renderSpaceActionMarkup()}</span> <span>|</span>
             <span class="keybindings-panel__key">New session: n</span> <span>|</span>
             <span class="keybindings-panel__key">Prompt session: p</span> <span>|</span>
@@ -84,7 +84,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
             <span class="keybindings-panel__key">Keybindings: ?</span>
           </div>
         </div>
-        <span>v1.0.2</span>
+        <span>v1.1.0</span>
       `;
     }
 

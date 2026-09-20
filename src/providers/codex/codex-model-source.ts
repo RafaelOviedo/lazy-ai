@@ -79,6 +79,9 @@ export class CodexModelSource {
         label: entry.display_name ?? (entry.slug as string),
         description: entry.description,
         defaultEffort: entry.default_reasoning_level,
+        supportedEfforts: [...new Set((Array.isArray(entry.supported_reasoning_levels)
+          ? entry.supported_reasoning_levels : [])
+          .flatMap((level) => typeof level?.effort === "string" && level.effort.trim() ? [level.effort] : []))],
         contextWindow: entry.context_window,
       }));
   }

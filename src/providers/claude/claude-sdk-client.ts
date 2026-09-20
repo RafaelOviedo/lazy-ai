@@ -3,9 +3,11 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 
 import { SessionAlreadyRunningError } from "../../entities/provider/index.js";
 import { resolveExecutablePath } from "../../shared/lib/process/index.js";
+import { parseClaudeEffort } from "./claude-effort.js";
 
 import type {
   Options,
+  EffortLevel,
   PermissionResult,
   PermissionUpdate,
   Query,
@@ -40,6 +42,8 @@ type SessionInputQueue = {
 };
 
 type LiveSession = {
+  effort: EffortLevel | null;
+  pumpPromise: Promise<void> | null;
   allowedToolsForSession: Set<string>;
   completedTurns: TurnCompletion[];
   cwd: string | undefined;
@@ -86,19 +90,25 @@ let hasExecutableLaunchFailure = false;
  */
 export class ClaudeSdkClient implements ProviderRuntimeClient {
   private readonly model: string | null;
+  private effort: EffortLevel | null;
   private readonly canResumeSession: ClaudeSdkClientOptions["canResumeSession"];
   private readonly sessions = new Map<string, LiveSession>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
   private isDisposed = false;
 
-  constructor(options: ClaudeSdkClientOptions = {}) {
+  constructor(options: ClaudeSdkClientOptions = {}, private readonly createQuery: typeof query = query) {
     this.model = options.model ?? null;
+    this.effort = parseClaudeEffort(options.effort ?? null);
     this.canResumeSession = options.canResumeSession;
 
     // Started here so the first turn does not pay for it. Resolving the binary
     // walks the whole PATH, and blocking `startTurn` on that delays the point at
     // which the turn becomes interruptible.
     void primeClaudeExecutablePath();
+  }
+
+  setEffort(effort: string | null): void {
+    this.effort = parseClaudeEffort(effort);
   }
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
@@ -175,6 +185,17 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
     if (session.startFailure) {
       throw session.startFailure;
+    }
+
+    if (session.query && session.effort !== this.effort) {
+      // Reopen the same saved session with fresh launch options. In particular,
+      // omitting effort restores user/project defaults; applyFlagSettings(null)
+      // would restore only the model default and ignore configured preferences.
+      session.input?.end();
+      await session.query.return(undefined);
+      await session.pumpPromise;
+      session.startFailure = null;
+      this.assertNotDisposed();
     }
 
     if (!session.query) {
@@ -266,6 +287,8 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   private createSessionRecord(sessionId: string, cwd: string | undefined, isResumed: boolean): LiveSession {
     return {
+      effort: this.effort,
+      pumpPromise: null,
       allowedToolsForSession: new Set<string>(),
       completedTurns: [],
       cwd,
@@ -288,12 +311,13 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     const input = createSessionInputQueue();
 
     session.input = input;
-    session.query = query({
+    session.effort = this.effort;
+    session.query = this.createQuery({
       prompt: input.iterable,
       options: this.buildQueryOptions(session),
     });
 
-    void this.pumpSession(session);
+    session.pumpPromise = this.pumpSession(session);
   }
 
   private buildQueryOptions(session: LiveSession): Options {
@@ -308,6 +332,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       ...(session.isResumed ? { resume: session.sessionId } : { sessionId: session.sessionId }),
       // Omitted when unset so Claude Code applies its own configured default.
       ...(this.model ? { model: this.model } : {}),
+      ...(this.effort ? { effort: this.effort } : {}),
     };
 
     if (cachedExecutablePath && !hasExecutableLaunchFailure) {
