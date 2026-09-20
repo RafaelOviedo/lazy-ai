@@ -5,7 +5,7 @@
   "main": "./dist/index.js",
   "type": "module",
   "bin": {
-    "lazyai": "./dist/index.js"
+    "lazyai": "dist/index.js"
   },
   "files": [
     "dist",
