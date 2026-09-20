@@ -22,6 +22,8 @@ AI coding agents are great right up until you have five half-remembered conversa
 
 LazyAI gives Claude Code and Codex a single terminal home: browse projects, inspect saved sessions, resume work, send prompts, switch models, approve tools, and keep the important context visible without leaving your keyboard.
 
+LazyAI also has a Neovim plugin: [lazy-ai.nvim](https://github.com/RafaelOviedo/lazy-ai.nvim)
+
 ## Table of Contents
 
 - [Elevator Pitch](#elevator-pitch)
