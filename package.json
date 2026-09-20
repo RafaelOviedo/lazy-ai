@@ -1,6 +1,6 @@
 {
   "name": "@rafaeloviedo/lazyai",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Keyboard-first terminal UI for managing Claude Code and Codex sessions",
   "main": "./dist/index.js",
   "type": "module",
