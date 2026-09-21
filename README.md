@@ -24,9 +24,14 @@ LazyAI gives Claude Code and Codex a single terminal home: browse projects, insp
 
 LazyAI also has a Neovim plugin: [lazy-ai.nvim](https://github.com/RafaelOviedo/lazy-ai.nvim)
 
+## Sponsorship
+
+Support LazyAI by [sponsoring me on GitHub](https://github.com/sponsors/RafaelOviedo).
+
 ## Table of Contents
 
 - [Elevator Pitch](#elevator-pitch)
+- [Sponsorship](#sponsorship)
 - [Features](#features)
   - [Browse Projects and Sessions](#browse-projects-and-sessions)
   - [Resume and Prompt Sessions](#resume-and-prompt-sessions)
@@ -39,6 +44,7 @@ LazyAI also has a Neovim plugin: [lazy-ai.nvim](https://github.com/RafaelOviedo/
 - [Providers and Local Data](#providers-and-local-data)
 - [Privacy and Transparency](#privacy-and-transparency)
 - [Contributing](#contributing)
+- [Donate](#donate)
 - [License](#license)
 
 ## Features
@@ -236,6 +242,10 @@ Found something that contradicts any of this? Please [open an issue](https://git
 ## Contributing
 
 Issues and pull requests are welcome. The source is TypeScript, the terminal UI is built with [`@b9g/termdom`](https://www.npmjs.com/package/@b9g/termdom), and provider integrations live under `src/providers`.
+
+## Donate
+
+LazyAI isn’t my full-time job, but I spend my free time working on it. If you’d like to support the project, please consider [sponsoring me](https://github.com/sponsors/RafaelOviedo).
 
 ## License
 
