@@ -16,6 +16,8 @@ type SessionStartControllerOptions = {
   providerLabel: string;
   /** Surfaces a failed action to the user. */
   reportActionError(message: string): void;
+  /** Starts a background usage refresh when a turn finishes. */
+  refreshUsageLimit(): void;
   setActiveSession(sessionId: string, threadId: string): void;
   setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
@@ -74,12 +76,14 @@ export function createSessionStartController(options: SessionStartControllerOpti
     options.setDetailsInterruptedSessionId(null);
     options.syncStatusPanel();
 
+    let didStartTurn = false;
     try {
       const startedThread = await options.client.startThread(projectPath);
 
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       const startedTurn = await options.client.startTurn(startedThread.threadId, trimmedPrompt, projectPath);
+      didStartTurn = true;
 
       if (currentStartRequestVersion !== startRequestVersion) return;
 
@@ -149,6 +153,7 @@ export function createSessionStartController(options: SessionStartControllerOpti
       if (currentStartRequestVersion !== startRequestVersion) return;
 
       isStarting = false;
+      if (didStartTurn) options.refreshUsageLimit();
     }
   }
 

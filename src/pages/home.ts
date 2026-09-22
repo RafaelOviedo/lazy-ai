@@ -30,6 +30,7 @@ import { createSessionPromptController } from "../features/prompt-session/index.
 import { createSessionResumeController } from "../features/resume-session/index.js";
 import { createSessionStartController } from "../features/start-session/index.js";
 import { createToolApprovalController } from "../features/approve-tool-use/index.js";
+import { createUsageLimitController } from "../features/refresh-usage-limit/index.js";
 
 import type { ToolPermissionDecision, ToolPermissionRequest } from "../entities/provider/index.js";
 
@@ -181,6 +182,20 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const statusPanel = statusPanelElement as StatusPanelElement | null;
   const keybindingsPanel = keybindingsPanelElement as KeybindingsPanelElement | null;
 
+  const usageLimitController = createUsageLimitController({
+    readSnapshot: () => sessionReader.getLatestUsageLimit(),
+    onSnapshot: (snapshot) => {
+      usageLimitSnapshot = snapshot;
+      syncStatusPanel();
+    },
+  });
+
+  function refreshUsageLimitAfterTurn(): void {
+    if (providerProfile.id === "codex") {
+      void usageLimitController.refreshAfterTurn();
+    }
+  }
+
   function onSessionsPanelFocus() {
     if (keybindingsPanel) {
       keybindingsPanel.focusedPanel = "sessions";
@@ -254,6 +269,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const sessionStartController = createSessionStartController({
     client: appServerClient,
+    refreshUsageLimit: refreshUsageLimitAfterTurn,
     getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
     providerLabel: providerProfile.label,
     reportActionError,
@@ -280,6 +296,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const sessionPromptController = createSessionPromptController({
     client: appServerClient,
+    refreshUsageLimit: refreshUsageLimitAfterTurn,
     providerLabel: providerProfile.label,
     reportActionError,
     setDetailsPendingUserPrompt: (prompt) => {
@@ -423,7 +440,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       selectedSession = null;
     }
 
-    void refreshUsageLimit();
+    void usageLimitController.refresh();
     syncContextPanel();
     syncStatusPanel();
   }
@@ -437,16 +454,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       defaultModelId = model?.id ?? null;
     } catch {
       defaultModelLabel = null;
-    }
-
-    syncStatusPanel();
-  }
-
-  async function refreshUsageLimit() {
-    try {
-      usageLimitSnapshot = await sessionReader.getLatestUsageLimit();
-    } catch {
-      usageLimitSnapshot = null;
     }
 
     syncStatusPanel();
@@ -744,12 +751,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   void refreshDefaultModelLabel();
-  void refreshUsageLimit();
+  void usageLimitController.refresh();
 
   syncStatusPanel();
 
   return () => {
     isDisposed = true;
+    usageLimitController.dispose();
     unsubscribeActiveProvider();
     sessionDeleteController.dispose();
     sessionPromptController.dispose();

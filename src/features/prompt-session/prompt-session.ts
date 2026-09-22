@@ -12,6 +12,8 @@ type SessionPromptControllerOptions = {
   providerLabel: string;
   /** Surfaces a failed action to the user. */
   reportActionError(message: string): void;
+  /** Starts a background usage refresh when a turn finishes. */
+  refreshUsageLimit(): void;
   setDetailsPendingUserPrompt(prompt: PendingSessionPrompt | null): void;
   setDetailsInterruptedSessionId(sessionId: string | null): void;
   setDetailsThinkingSessionId(sessionId: string | null): void;
@@ -86,8 +88,10 @@ export function createSessionPromptController(options: SessionPromptControllerOp
     options.setDetailsThinkingSessionId(session.id);
     options.syncStatusPanel();
 
+    let didStartTurn = false;
     try {
       const startedTurn = await options.client.startTurn(threadId, trimmedPrompt, projectPath);
+      didStartTurn = true;
 
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
@@ -150,6 +154,7 @@ export function createSessionPromptController(options: SessionPromptControllerOp
       if (currentPromptRequestVersion !== promptRequestVersion) return;
 
       isPrompting = false;
+      if (didStartTurn) options.refreshUsageLimit();
     }
   }
 
