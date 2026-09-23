@@ -83,7 +83,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       .card {
         display: flex;
         flex-direction: column;
-        gap: 1px;
         position: relative;
         border: 1px solid #5fafff;
         padding: 0 1ch;
@@ -96,7 +95,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       .container-for-1-and-2 {
         display: flex;
         flex-direction: row;
-        gap: 2px;
+        gap: 1px;
         flex-grow: 1;
         flex-shrink: 1;
         /* TermDOM requires a length here: a unitless 0 is parsed as flex-grow. */
@@ -108,7 +107,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       .container-1 {
         display: flex;
         flex-direction: column;
-        gap: 1px;
         flex-grow: 3;
         flex-shrink: 1;
         flex-basis: 0px;
