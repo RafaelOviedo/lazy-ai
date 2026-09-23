@@ -84,7 +84,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
             <span class="keybindings-panel__key">Keybindings: ?</span>
           </div>
         </div>
-        <span>v1.2.0</span>
+        <span>v1.3.0</span>
       `;
     }
 
