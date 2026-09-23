@@ -17,6 +17,7 @@ type ToolApprovalControllerOptions = {
 };
 
 export type ToolApprovalController = {
+  cancelSessionRequests(sessionId: string): void;
   dispose(): void;
   /** Re-checks the queue once the screen frees up. */
   handleModalClosed(): void;
@@ -74,7 +75,7 @@ export function createToolApprovalController(options: ToolApprovalControllerOpti
     queue.shift();
 
     options.openPermissionModal(nextRequest.request, queue.length, (decision) => {
-      settleActiveRequest(decision);
+      if (activeRequest === nextRequest) settleActiveRequest(decision);
     });
   }
 
@@ -90,29 +91,46 @@ export function createToolApprovalController(options: ToolApprovalControllerOpti
     presentNextRequest();
   }
 
+  function cancelSessionRequests(sessionId: string): void {
+    for (let index = queue.length - 1; index >= 0; index -= 1) {
+      if (queue[index].request.sessionId !== sessionId) continue;
+      queue.splice(index, 1)[0].settle(deniedDecision);
+    }
+    if (activeRequest?.request.sessionId === sessionId) {
+      settleActiveRequest(deniedDecision);
+    }
+  }
+
+  function dispose() {
+    isDisposed = true;
+
+    const abandonedRequests = [...queue];
+
+    queue.length = 0;
+
+    const abandonedActiveRequest = activeRequest;
+    activeRequest = null;
+
+    abandonedActiveRequest?.settle(deniedDecision);
+
+    for (const abandonedRequest of abandonedRequests) {
+      abandonedRequest.settle(deniedDecision);
+    }
+  }
+
+  function handleModalClosed(): void {
+    presentNextRequest();
+  }
+
+  function hasPendingRequests(): boolean {
+    return activeRequest !== null || queue.length > 0;
+  }
+
   return {
-    dispose(): void {
-      isDisposed = true;
-
-      const abandonedRequests = [...queue];
-
-      queue.length = 0;
-
-      const abandonedActiveRequest = activeRequest;
-      activeRequest = null;
-
-      abandonedActiveRequest?.settle(deniedDecision);
-
-      for (const abandonedRequest of abandonedRequests) {
-        abandonedRequest.settle(deniedDecision);
-      }
-    },
-    handleModalClosed(): void {
-      presentNextRequest();
-    },
-    hasPendingRequests(): boolean {
-      return activeRequest !== null || queue.length > 0;
-    },
+    cancelSessionRequests,
+    dispose,
+    handleModalClosed,
+    hasPendingRequests,
     requestToolPermission,
   };
 }

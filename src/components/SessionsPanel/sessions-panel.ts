@@ -1,4 +1,6 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
+import type { SessionRunStatus } from "../../features/run-session/index.js";
+import { isSameProjectPath } from "../../shared/lib/paths/index.js";
 import { Keybindings } from "../../app/types.js";
 
 import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
@@ -36,8 +38,9 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private activeSessionIdValue: string | null = null;
     private resumingSessionIdValue: string | null = null;
     private deletingSessionIdValue: string | null = null;
-    private thinkingSessionIdValue: string | null = null;
-    private interruptedSessionIdValue: string | null = null;
+    private runStatuses = new Map<string, SessionRunStatus>();
+    private liveSessions = new Map<string, SessionSummary>();
+    private loadVersion = 0;
     private alreadyRunningSessionIdValue: string | null = null;
     private resumeFailedSessionIdValue: string | null = null;
     private sessionReader: SessionReader | null = null;
@@ -84,6 +87,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.removeEventListener("keydown", this.onKeyDown);
       window.removeEventListener("resize", this.onResize);
       this.stopThinkingSpinner();
+      this.loadVersion += 1;
     }
 
     /**
@@ -187,37 +191,17 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
       this.updateSessionStatusMarkup(sessionId);
     }
 
-    /**
-     * Updates the session id currently waiting on an initial model response.
-     */
-    setSessionThinking(sessionId: string | null): void {
-      if (this.thinkingSessionIdValue === sessionId) return;
-
-      const previousThinkingSessionId = this.thinkingSessionIdValue;
-
-      this.thinkingSessionIdValue = sessionId;
-
-      if (!this.isConnected) return;
-
-      this.updateSessionStatusMarkup(previousThinkingSessionId);
-      this.updateSessionStatusMarkup(sessionId);
-      this.syncThinkingSpinnerAnimation();
+    forgetSession(sessionId: string): void {
+      this.liveSessions.delete(sessionId);
+      this.runStatuses.delete(sessionId);
     }
 
-    /**
-     * Updates the session id currently shown as interrupted.
-     */
-    setSessionInterrupted(sessionId: string | null): void {
-      if (this.interruptedSessionIdValue === sessionId) return;
+    /** Updates only the affected session; other running rows keep their status. */
+    setSessionRunStatus(sessionId: string, status: SessionRunStatus): void {
+      if (this.runStatuses.get(sessionId) === status) return;
 
-      const previousInterruptedSessionId = this.interruptedSessionIdValue;
-
-      this.interruptedSessionIdValue = sessionId;
-
-      if (!this.isConnected) return;
-
-      this.updateSessionStatusMarkup(previousInterruptedSessionId);
-      this.updateSessionStatusMarkup(sessionId);
+      this.runStatuses.set(sessionId, status);
+      if (this.isConnected) this.updateSessionStatusMarkup(sessionId);
     }
 
     /**
@@ -326,15 +310,25 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (!sessionReader) return;
 
+      const loadVersion = ++this.loadVersion;
+      const projectPath = this.projectPathValue;
       this.isLoading = true;
       this.render();
 
       try {
+        const sessions = await sessionReader.listByProject(projectPath);
+        if (loadVersion !== this.loadVersion) return;
         this.loadError = null;
-        this.sessions = await sessionReader.listByProject(this.projectPathValue);
+        this.sessions = sessions;
+        for (const session of this.liveSessions.values()) {
+          if (isSameProjectPath(session.projectPath, projectPath) && !sessions.some((saved) => saved.id === session.id)) {
+            this.sessions.unshift(session);
+          }
+        }
         this.selectedSessionIndex = 0;
         this.promoteActiveSession(false);
       } catch {
+        if (loadVersion !== this.loadVersion) return;
         this.loadError = "Failed to load sessions.";
         this.sessions = [];
         this.selectedSessionIndex = 0;
@@ -441,6 +435,11 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
           .sessions-panel__status-running {
             color: #43B53E;
+          }
+
+          .sessions-panel__active-label {
+            color: #43B53E;
+            font-weight: bold;
           }
 
           .sessions-panel__status-resuming {
@@ -646,8 +645,9 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     /**
      * Inserts or updates one session in the rendered list.
      */
-    private upsertSession(session: SessionSummary): void {
-      if (this.projectPathValue && session.projectPath !== this.projectPathValue) return;
+    upsertSession(session: SessionSummary): void {
+      this.liveSessions.set(session.id, session);
+      if (this.projectPathValue && !isSameProjectPath(session.projectPath, this.projectPathValue)) return;
 
       const selectedSessionId = this.selectedSession?.id ?? null;
       const existingSessionIndex = this.sessions.findIndex((candidateSession) => candidateSession.id === session.id);
@@ -656,16 +656,9 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         this.sessions.unshift(session);
       } else {
         this.sessions[existingSessionIndex] = session;
-
-        if (existingSessionIndex > 0) {
-          this.sessions.splice(existingSessionIndex, 1);
-          this.sessions.unshift(session);
-        }
       }
 
-      if (this.activeSessionIdValue === session.id) {
-        this.selectedSessionIndex = 0;
-      } else if (selectedSessionId) {
+      if (selectedSessionId) {
         this.selectedSessionIndex = Math.max(0, this.sessions.findIndex((candidateSession) => candidateSession.id === selectedSessionId));
       } else {
         this.selectedSessionIndex = 0;
@@ -964,19 +957,23 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Builds the saved/running status label.
+     * Shows the prompt target independently of the session's execution status.
      */
     private renderSessionStatusMarkup(session: SessionSummary): string {
       const status = this.resolveSessionStatus(session);
       const statusText = escapeHtml(status.text);
+      const activeLabel = session.id === this.activeSessionIdValue
+        ? '<span class="sessions-panel__active-label" data-active-session="true">Active</span> · '
+        : "";
 
-      if (session.id === this.thinkingSessionIdValue) {
-        return `<span class="sessions-panel__status-thinking"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> ${statusText}</span>`;
+      if (["starting", "thinking"].includes(this.runStatuses.get(session.id) ?? "")) {
+        return `${activeLabel}<span class="sessions-panel__status-thinking"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> ${statusText}</span>`;
       }
 
-      return status.className
+      const statusMarkup = status.className
         ? `<span class="${status.className}">${statusText}</span>`
         : statusText;
+      return `${activeLabel}${statusMarkup}`;
     }
 
     /**
@@ -1003,16 +1000,18 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         return { className: "sessions-panel__status-deleting", text: "Deleting..." };
       }
 
-      if (session.id === this.thinkingSessionIdValue) {
-        return { className: "sessions-panel__status-thinking", text: "Thinking..." };
-      }
+      const runStatus = this.runStatuses.get(session.id);
 
-      if (session.id === this.interruptedSessionIdValue) {
-        return { className: "sessions-panel__status-interrupted", text: "Interrupted" };
-      }
-
-      if (session.id === this.activeSessionIdValue) {
-        return { className: "sessions-panel__status-running", text: "Active" };
+      if (runStatus) {
+        const statuses: Record<SessionRunStatus, SessionStatusPresentation> = {
+          starting: { className: "sessions-panel__status-thinking", text: "Starting..." },
+          thinking: { className: "sessions-panel__status-thinking", text: "Thinking..." },
+          awaitingApproval: { className: "sessions-panel__status-resuming", text: "Awaiting approval" },
+          completed: { className: "sessions-panel__status-running", text: "Completed" },
+          failed: { className: "sessions-panel__status-failed", text: "Failed" },
+          interrupted: { className: "sessions-panel__status-interrupted", text: "Interrupted" },
+        };
+        return statuses[runStatus];
       }
 
       return { className: null, text: session.status };

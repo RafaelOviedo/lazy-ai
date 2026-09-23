@@ -208,6 +208,7 @@ export function ensureToolPermissionModalDefined(window: TermWindow): void {
         </style>
 
         <legend class="tool-permission-modal__title">Permission required</legend>
+        <div class="tool-permission-modal__detail">${escapeHtml(this.payloadValue?.sessionLabel ?? request?.sessionId ?? "")}</div>
         <div class="tool-permission-modal__prompt">${escapeHtml(request?.title ?? "A session wants to use a tool")}</div>
         <div style="margin-bottom: 1px;">${this.renderPathMarkup()}</div>
         ${this.renderDetailMarkup()}

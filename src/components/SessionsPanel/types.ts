@@ -1,3 +1,4 @@
+import type { SessionRunStatus } from "../../features/run-session/index.js";
 import { TermDOM } from "@b9g/termdom";
 import type { SessionReader, SessionSummary } from "../../entities/session/index.js";
 
@@ -35,8 +36,9 @@ export type SessionsPanelElement = HTMLElement & {
   setSessionDeleting(sessionId: string | null): void;
   setSessionResumeFailed(sessionId: string | null): void;
   setSessionResuming(sessionId: string | null): void;
-  setSessionInterrupted(sessionId: string | null): void;
-  setSessionThinking(sessionId: string | null): void;
+  setSessionRunStatus(sessionId: string, status: SessionRunStatus): void;
+  upsertSession(session: SessionSummary): void;
+  forgetSession(sessionId: string): void;
   repository: SessionReader;
   readonly selectedSession: SessionSummary | null;
   reload(): Promise<void>;

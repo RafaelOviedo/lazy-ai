@@ -6,4 +6,5 @@ export type ToolPermissionModalPayload = {
   /** Number of further requests waiting behind this one, for a queue hint. */
   queuedCount: number;
   request: ToolPermissionRequest;
+  sessionLabel?: string;
 };

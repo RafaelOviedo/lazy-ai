@@ -26,9 +26,8 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
 import { createSessionDeleteController } from "../features/delete-session/index.js";
-import { createSessionPromptController } from "../features/prompt-session/index.js";
+import { createSessionRunController } from "../features/run-session/index.js";
 import { createSessionResumeController } from "../features/resume-session/index.js";
-import { createSessionStartController } from "../features/start-session/index.js";
 import { createToolApprovalController } from "../features/approve-tool-use/index.js";
 import { createUsageLimitController } from "../features/refresh-usage-limit/index.js";
 
@@ -171,7 +170,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let defaultModelId: string | null = null;
   let isModelPickerLoading = false;
   let isDisposed = false;
-  let pendingActionError: { message: string; title: string } | null = null;
+  const pendingActionErrors: { message: string; title: string }[] = [];
+  let navigationVersion = 0;
+  let pendingSessionStart: { navigation: number; interruptRequested: boolean } | null = null;
 
   panel1?.focus();
 
@@ -216,12 +217,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         onDecide,
         queuedCount,
         request,
+        sessionLabel: getPermissionSessionLabel(request.sessionId),
       });
     },
   });
-
-  // Only providers that gate tool use expose this, so the call stays optional.
-  appServerClient.setToolPermissionHandler?.(toolApprovalController.requestToolPermission);
 
   const sessionResumeController = createSessionResumeController({
     client: appServerClient,
@@ -229,14 +228,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     reportActionError,
     setActiveSessionId: (sessionId) => {
       const wasActive = sessionsPanel?.activeSessionId === sessionId;
-      setInterruptedSession(null);
       if (sessionsPanel) {
         sessionsPanel.activeSessionId = sessionId;
       }
-      // A completed turn marks the session active again; it must not replace a
-      // different conversation the user has since opened.
+
+      // Activation follows an explicit start/resume, never turn completion.
       if (sessionId && !wasActive) {
-        const session = sessionsPanel?.getSession(sessionId);
+        const session = sessionsPanel?.getSession(sessionId) ?? sessionRunController.getState(sessionId)?.session;
         if (session) viewSession(session);
       }
     },
@@ -252,6 +250,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const sessionDeleteController = createSessionDeleteController({
     clearActiveSession: (sessionId) => {
       sessionResumeController.clearActiveSession(sessionId);
+      sessionRunController.forgetSession(sessionId);
+      sessionsPanel?.forgetSession(sessionId);
       if (detailsPanel?.viewedSession?.id === sessionId) {
         detailsPanel.viewedSession = null;
       }
@@ -267,62 +267,55 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     syncStatusPanel,
   });
 
-  const sessionStartController = createSessionStartController({
+  const sessionRunController = createSessionRunController({
     client: appServerClient,
-    refreshUsageLimit: refreshUsageLimitAfterTurn,
-    getSession: (sessionId) => sessionsPanel?.getSession(sessionId) ?? null,
     providerLabel: providerProfile.label,
+    refreshUsageLimit: refreshUsageLimitAfterTurn,
     reportActionError,
-    setActiveSession: (sessionId, threadId) => sessionResumeController.markSessionActive(sessionId, threadId),
-    setDetailsInterruptedSessionId: (sessionId) => {
-      if (detailsPanel) {
-        detailsPanel.interruptedSessionId = sessionId;
+    onChange: (state) => {
+      if (isDisposed) return;
+
+      sessionsPanel?.upsertSession(state.session);
+      sessionsPanel?.setSessionRunStatus(state.session.id, state.status);
+
+      if (detailsPanel?.viewedSession?.id === state.session.id) {
+        detailsPanel.viewedSession = state.session;
+        syncViewedRunState();
       }
     },
-    setDetailsThinkingSessionId: (sessionId) => {
-      if (detailsPanel) {
-        detailsPanel.thinkingSessionId = sessionId;
-      }
+    onTurnFinished: (sessionId, threadId) => {
+      toolApprovalController.cancelSessionRequests(threadId);
+      if (sessionId !== threadId) toolApprovalController.cancelSessionRequests(sessionId);
     },
-    setLoadError: (error) => {
-      loadError = error;
-    },
-    setSessionInterrupted: (sessionId) => sessionsPanel?.setSessionInterrupted(sessionId),
-    setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
-    syncSession,
-    syncStatusPanel,
+    syncSession: async (sessionId, sessionProjectPath) => {
+      // Background sessions may belong to a different project than the visible list.
+      try {
+        const sessions = await sessionReader.listByProject(sessionProjectPath);
+        return sessions.find((session) => session.id === sessionId) ?? null;
+      } catch {
+        return null;
+      }
+    },
   });
 
-  const sessionPromptController = createSessionPromptController({
-    client: appServerClient,
-    refreshUsageLimit: refreshUsageLimitAfterTurn,
-    providerLabel: providerProfile.label,
-    reportActionError,
-    setDetailsPendingUserPrompt: (prompt) => {
-      if (detailsPanel) {
-        detailsPanel.pendingUserPrompt = prompt;
-      }
-    },
-    setDetailsInterruptedSessionId: (sessionId) => {
-      if (detailsPanel) {
-        detailsPanel.interruptedSessionId = sessionId;
-      }
-    },
-    setDetailsThinkingSessionId: (sessionId) => {
-      if (detailsPanel) {
-        detailsPanel.thinkingSessionId = sessionId;
-      }
-    },
-    setLoadError: (error) => {
-      loadError = error;
-    },
-    setSessionInterrupted: (sessionId) => sessionsPanel?.setSessionInterrupted(sessionId),
-    setSessionThinking: (sessionId) => sessionsPanel?.setSessionThinking(sessionId),
-    syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
-    syncSession,
-    syncStatusPanel,
-  });
+  appServerClient.setToolPermissionHandler?.((request) =>
+    sessionRunController.requestToolPermission(request, toolApprovalController.requestToolPermission));
+
+  function getPermissionSessionLabel(sessionId: string): string {
+    const session = sessionRunController.getState(sessionId)?.session ?? sessionsPanel?.getSession(sessionId);
+    return session ? `${session.title} · ${session.projectPath}` : sessionId;
+  }
+
+  function syncViewedRunState(): void {
+    const sessionId = detailsPanel?.viewedSession?.id;
+    if (!detailsPanel) return;
+
+    const state = sessionId ? sessionRunController.getState(sessionId) : null;
+    detailsPanel.thinkingSessionId = state?.busy ? sessionId! : null;
+    detailsPanel.interruptedSessionId = state?.status === "interrupted" ? sessionId! : null;
+    detailsPanel.pendingUserPrompt = state?.pendingPrompt ?? null;
+  }
 
   if (detailsPanel) {
     detailsPanel.repository = sessionReader;
@@ -345,14 +338,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
    * its turn, so a notice arriving at a busy moment waits for the screen.
    */
   function reportActionError(message: string, title = "Session error"): void {
-    if (!message) return;
+    if (isDisposed || !message) return;
 
     if (getModalConfig().isActive) {
-      pendingActionError = { message, title };
+      pendingActionErrors.push({ message, title });
       return;
     }
 
-    pendingActionError = null;
     openModal(ModalName.actionErrorModal, { message, title });
   }
 
@@ -361,12 +353,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
    * first, because a turn stays blocked until one is answered.
    */
   function flushPendingActionError(): void {
-    const pendingNotice = pendingActionError;
+    const pendingNotice = pendingActionErrors[0];
 
     if (!pendingNotice || getModalConfig().isActive) return;
     if (toolApprovalController.hasPendingRequests()) return;
 
-    pendingActionError = null;
+    pendingActionErrors.shift();
     openModal(ModalName.actionErrorModal, pendingNotice);
   }
 
@@ -377,14 +369,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function viewSession(session: SessionSummary) {
     if (!isSameProjectPath(session.projectPath, selectedProjectPath)) return;
     detailsPanel?.viewSession(session);
-  }
-
-  async function syncSession(sessionId: string) {
-    const session = await sessionsPanel?.syncSession(sessionId) ?? null;
-    if (session && detailsPanel?.viewedSession?.id === session.id) {
-      detailsPanel.viewedSession = session;
-    }
-    return session;
+    syncViewedRunState();
   }
 
   function syncStatusPanel() {
@@ -408,14 +393,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     contextPanel.selectedSession = selectedSession;
   }
 
-  function setInterruptedSession(sessionId: string | null) {
-    sessionsPanel?.setSessionInterrupted(sessionId);
-    if (detailsPanel) {
-      detailsPanel.interruptedSessionId = sessionId;
-    }
-  }
-
   function onProjectChange(event: Event) {
+    navigationVersion += 1;
     const customEvent = event as CustomEvent<ProjectSelectionChangeDetail>;
     const selectedProject = customEvent.detail.project;
 
@@ -472,7 +451,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function onSessionViewRequest(event: Event) {
     if (getModalConfig().isActive) return;
     const { session, projectPath } = (event as CustomEvent<SessionViewRequestDetail>).detail;
-    if (isSameProjectPath(projectPath, selectedProjectPath)) viewSession(session);
+    if (isSameProjectPath(projectPath, selectedProjectPath)) {
+      navigationVersion += 1;
+      viewSession(session);
+    }
   }
 
   function onSessionResumeRequest(event: Event) {
@@ -487,11 +469,15 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (sessionResumeController.isSessionResuming(requestedSession.id)) return;
 
     if (sessionResumeController.isSessionActive(requestedSession.id)) {
+      navigationVersion += 1;
       viewSession(requestedSession);
-      sessionResumeController.showAlreadyRunningStatus(requestedSession.id);
+      if (!sessionRunController.isBusy(requestedSession.id)) {
+        sessionResumeController.showAlreadyRunningStatus(requestedSession.id);
+      }
       return;
     }
 
+    navigationVersion += 1;
     void sessionResumeController.resumeSession(requestedSession, customEvent.detail.projectPath);
   }
 
@@ -504,7 +490,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       return;
     }
 
-    if (hasOngoingTurn()) return;
+    if (sessionRunController.isBusy(requestedSession.id)) return;
     if (sessionDeleteController.isSessionDeleting(requestedSession.id)) return;
 
     openModal(ModalName.confirmDeleteSessionModal, {
@@ -523,20 +509,26 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       return;
     }
 
-    if (hasOngoingTurn()) return;
-    if (sessionStartController.isSessionStarting()) return;
-
     openModal(ModalName.startNewSessionModal, {
       onConfirm: (prompt: string) => {
         closeModal();
-        void sessionStartController.startSession(prompt, selectedProjectPath);
+        const start = { navigation: ++navigationVersion, interruptRequested: false };
+        pendingSessionStart = start;
+        loadError = null;
+        void sessionRunController.startSession(prompt, selectedProjectPath, (session, threadId) => {
+          sessionResumeController.attachSession(session.id, threadId);
+          if (pendingSessionStart === start) pendingSessionStart = null;
+          if (start.interruptRequested) void sessionRunController.interruptSession(session.id);
+          if (start.navigation === navigationVersion) sessionResumeController.markSessionActive(session.id, threadId);
+        }).finally(() => {
+          if (pendingSessionStart === start) pendingSessionStart = null;
+        });
       },
     });
   }
 
   function isModelSelectionBlocked(): boolean {
-    return isDisposed || hasOngoingTurn() || sessionStartController.isSessionStarting()
-      || sessionPromptController.isSessionPrompting();
+    return isDisposed || hasOngoingTurn();
   }
 
   function openModelPickerModal() {
@@ -576,11 +568,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       return;
     }
 
-    if (hasOngoingTurn()) return;
-    if (sessionPromptController.isSessionPrompting()) return;
-
     const activeSessionId = sessionResumeController.getActiveSessionId();
     const activeThreadId = sessionResumeController.getActiveThreadId();
+
+    if (activeSessionId && sessionRunController.isBusy(activeSessionId)) return;
 
     if (!activeSessionId || !activeThreadId) {
       openModal(ModalName.actionErrorModal, {
@@ -591,6 +582,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     }
 
     const activeSession = sessionsPanel?.getSession(activeSessionId)
+      ?? sessionRunController.getState(activeSessionId)?.session
       ?? (selectedSession?.id === activeSessionId ? selectedSession : null);
 
     if (!activeSession) {
@@ -608,7 +600,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         closeModal();
         sessionsPanel?.selectSession(activeSession.id);
         viewSession(activeSession);
-        void sessionPromptController.promptSession(prompt, activeSession, activeThreadId, activeSession.projectPath);
+        navigationVersion += 1;
+        loadError = null;
+        void sessionRunController.promptSession(activeSession, activeThreadId, prompt);
       },
       sessionTitle: activeSession.title,
     });
@@ -646,29 +640,27 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   function handleInterruptSessionShortcut(event: KeyboardEvent, key: string): boolean {
     if (!isPlainKeyEvent(event) || key !== Keybindings.I) return false;
 
-    // A turn that is still starting counts as interruptible: the controllers
-    // hold the request and apply it the moment the turn exists, so pressing i
-    // early is honoured rather than silently dropped.
-    if (sessionPromptController.hasActiveTurn() || sessionPromptController.isSessionPrompting()) {
+    // Before the new thread has an ID, i still belongs to that new session,
+    // never to the older session that remains active on screen temporarily.
+    if (pendingSessionStart?.navigation === navigationVersion) {
+      pendingSessionStart.interruptRequested = true;
       event.preventDefault();
-      void sessionPromptController.interruptActiveTurn();
       return true;
     }
 
-    if (sessionStartController.hasActiveTurn() || sessionStartController.isSessionStarting()) {
-      event.preventDefault();
-      void sessionStartController.interruptActiveTurn();
-      return true;
-    }
+    const sessionId = sessionResumeController.getActiveSessionId();
 
-    return false;
+    if (!sessionId || !sessionRunController.isBusy(sessionId)) return false;
+
+    event.preventDefault();
+    void sessionRunController.interruptSession(sessionId);
+    return true;
   }
 
   function handleNewSessionShortcut(event: KeyboardEvent, key: string): boolean {
     if (!isPlainKeyEvent(event) || key !== Keybindings.N) return false;
 
     event.preventDefault();
-    if (hasOngoingTurn()) return true;
 
     openStartNewSessionModal();
     return true;
@@ -678,7 +670,6 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!isPlainKeyEvent(event) || key !== Keybindings.P) return false;
 
     event.preventDefault();
-    if (hasOngoingTurn()) return true;
 
     openPromptSessionModal();
     return true;
@@ -714,7 +705,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function hasOngoingTurn(): boolean {
-    return sessionPromptController.hasActiveTurn() || sessionStartController.hasActiveTurn();
+    return sessionRunController.hasOngoingTurn();
   }
 
   document.addEventListener("keydown", onKeyDown);
@@ -760,9 +751,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     usageLimitController.dispose();
     unsubscribeActiveProvider();
     sessionDeleteController.dispose();
-    sessionPromptController.dispose();
+    sessionRunController.dispose();
     sessionResumeController.dispose();
-    sessionStartController.dispose();
     // Detached before disposal so no in-flight request reaches a dead modal.
     appServerClient.setToolPermissionHandler?.(null);
     toolApprovalController.dispose();

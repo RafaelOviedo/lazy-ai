@@ -59,6 +59,10 @@ LazyAI reads local Claude Code and Codex history, groups sessions by project, an
 
 Press `Space` on a session to resume it, `n` to start a new one in the selected project, or `p` to send a follow-up prompt to the active session. The details panel follows the conversation as new messages arrive.
 
+Sessions can work in parallel: start another with `n`, or activate an idle session with `Space` and prompt it with `p` while others are thinking. Starting a session opens its conversation. To watch another session's incoming messages, highlight it and press `w`. Finishing a response updates its status without changing your view or selection.
+
+The session targeted by `p` and `i` keeps a green **Active** label alongside its status, such as **Active · Thinking...** or **Active · Completed**, even while you view another conversation.
+
 ![LazyAI: resuming and prompting sessions](docs/gifs/resume-and-prompt-sessions.gif)
 
 ### Switch Providers and Models
@@ -116,7 +120,7 @@ lazyai
 6. Press `n` to start a new session or `p` to prompt the active session.
 7. Press `i` to interrupt a running response, `?` for keybindings, or `q` to quit.
 
-Prompting targets the session you started or resumed. Moving the highlight updates metadata without changing the active session, so you can inspect history without accidentally redirecting your next prompt.
+Prompting and interrupting target the session you started or resumed with `Space`. Moving the highlight or viewing a conversation with `w` does not change that active session. Each session accepts one turn at a time; other sessions can run independently. Provider/model selection remains unavailable while any session is working.
 
 ### Keybindings
 
@@ -131,7 +135,7 @@ Dashboard shortcuts apply while no modal is open.
 | `w` | Sessions | Open the highlighted conversation; retry a failed load |
 | `n` | Dashboard | Open a new-session prompt for the selected project |
 | `p` | Dashboard | Open a follow-up prompt for the active session |
-| `i` | Dashboard | Interrupt the response being generated |
+| `i` | Dashboard | Interrupt the active session's response |
 | `d` | Sessions | Open the delete confirmation for the highlighted Codex session |
 | `m` | Dashboard | Open the provider and model picker |
 | `j` / `k` | Details | Scroll down / up |

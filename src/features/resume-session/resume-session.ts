@@ -21,6 +21,7 @@ type SessionResumeControllerOptions = {
 };
 
 export type SessionResumeController = {
+  attachSession(sessionId: string, threadId: string): void;
   clearActiveSession(sessionId?: string): void;
   dispose(): void;
   getActiveThreadId(): string | null;
@@ -36,6 +37,8 @@ export type SessionResumeController = {
  * Coordinates session resume state and transient resume statuses.
  */
 export function createSessionResumeController(options: SessionResumeControllerOptions): SessionResumeController {
+  const attachedThreads = new Map<string, string>();
+  const pendingResumes = new Map<string, Promise<{ threadId: string }>>();
   let activeSessionId: string | null = null;
   let activeThreadId: string | null = null;
   let resumingSessionId: string | null = null;
@@ -72,8 +75,12 @@ export function createSessionResumeController(options: SessionResumeControllerOp
   }
 
   function markSessionActive(sessionId: string, threadId?: string | null): void {
+    resumeRequestVersion += 1;
+    resumingSessionId = null;
+    options.setSessionResuming(null);
     activeSessionId = sessionId;
-    activeThreadId = threadId ?? sessionId;
+    activeThreadId = threadId ?? attachedThreads.get(sessionId) ?? sessionId;
+    attachedThreads.set(sessionId, activeThreadId);
     options.setActiveSessionId(activeSessionId);
   }
 
@@ -88,8 +95,25 @@ export function createSessionResumeController(options: SessionResumeControllerOp
     options.setSessionResuming(resumingSessionId);
 
     try {
-      const resumedThread = await options.client.resumeThread(requestedSession.id, resumeProjectPath);
+      let threadId = attachedThreads.get(requestedSession.id);
 
+      if (!threadId) {
+        let pending = pendingResumes.get(requestedSession.id);
+
+        if (!pending) {
+          pending = options.client.resumeThread(requestedSession.id, resumeProjectPath);
+          pendingResumes.set(requestedSession.id, pending);
+        }
+
+        try {
+          threadId = (await pending).threadId;
+          attachedThreads.set(requestedSession.id, threadId);
+        } finally {
+          pendingResumes.delete(requestedSession.id);
+        }
+      }
+
+      const resumedThread = { threadId };
       if (currentResumeRequestVersion !== resumeRequestVersion) return;
 
       markSessionActive(requestedSession.id, resumedThread.threadId);
@@ -119,36 +143,55 @@ export function createSessionResumeController(options: SessionResumeControllerOp
     }
   }
 
-  return {
-    clearActiveSession(sessionId?: string): void {
-      if (sessionId && activeSessionId !== sessionId) return;
+  function attachSession(sessionId: string, threadId: string): void {
+    attachedThreads.set(sessionId, threadId);
+  }
 
-      activeSessionId = null;
-      activeThreadId = null;
-      options.setActiveSessionId(null);
-    },
-    dispose(): void {
-      resumeRequestVersion += 1;
-      activeSessionId = null;
-      activeThreadId = null;
-      resumingSessionId = null;
-      options.setActiveSessionId(null);
-      options.setSessionResuming(null);
-      clearAlreadyRunningStatus();
-      clearResumeFailedStatus();
-    },
-    getActiveThreadId(): string | null {
-      return activeThreadId;
-    },
-    getActiveSessionId(): string | null {
-      return activeSessionId;
-    },
-    isSessionActive(sessionId: string): boolean {
-      return sessionId === activeSessionId;
-    },
-    isSessionResuming(sessionId: string): boolean {
-      return sessionId === resumingSessionId;
-    },
+  function clearActiveSession(sessionId?: string): void {
+    if (sessionId) attachedThreads.delete(sessionId);
+    if (sessionId && activeSessionId !== sessionId) return;
+
+    activeSessionId = null;
+    activeThreadId = null;
+    options.setActiveSessionId(null);
+  }
+
+  function dispose(): void {
+    resumeRequestVersion += 1;
+    attachedThreads.clear();
+    activeSessionId = null;
+    activeThreadId = null;
+    resumingSessionId = null;
+    options.setActiveSessionId(null);
+    options.setSessionResuming(null);
+    clearAlreadyRunningStatus();
+    clearResumeFailedStatus();
+  }
+
+  function getActiveThreadId(): string | null {
+    return activeThreadId;
+  }
+
+  function getActiveSessionId(): string | null {
+    return activeSessionId;
+  }
+
+  function isSessionActive(sessionId: string): boolean {
+    return sessionId === activeSessionId;
+  }
+
+  function isSessionResuming(sessionId: string): boolean {
+    return sessionId === resumingSessionId;
+  }
+
+  return {
+    attachSession,
+    clearActiveSession,
+    dispose,
+    getActiveThreadId,
+    getActiveSessionId,
+    isSessionActive,
+    isSessionResuming,
     markSessionActive,
     resumeSession,
     showAlreadyRunningStatus,
