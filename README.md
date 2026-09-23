@@ -18,9 +18,9 @@ A keyboard-first terminal UI for Claude Code and Codex sessions
 
 ## Elevator Pitch
 
-AI coding agents are great right up until you have five half-remembered conversations scattered across projects, terminals, providers, and model choices. Which session had the plan? Which one was already authenticated? Which one is currently chewing through your prompt? Why is finding the right thread harder than asking the assistant to refactor a service?
+AI coding agents are great, but working on multiple tasks in parallel can get messy fast. I built LazyAI after finding myself with several terminals open at once, each running a different Claude Code session, constantly switching between them just to remember what was happening where.
 
-LazyAI gives Claude Code and Codex a single terminal home: browse projects, inspect saved sessions, resume work, send prompts, switch models, approve tools, and keep the important context visible without leaving your keyboard.
+LazyAI brings those sessions into a single terminal UI. Manage Claude Code and Codex sessions across projects, resume previous work, send prompts, switch models, approve tools, and keep track of what each agent is doing — without juggling a bunch of terminal windows.
 
 LazyAI also has a Neovim plugin: [lazy-ai.nvim](https://github.com/RafaelOviedo/lazy-ai.nvim)
 
@@ -28,10 +28,51 @@ LazyAI also has a Neovim plugin: [lazy-ai.nvim](https://github.com/RafaelOviedo/
 
 Support LazyAI by [sponsoring me on GitHub](https://github.com/sponsors/RafaelOviedo).
 
+## Roadmap
+
+Potential additions to LazyAI. This list captures ideas for future development; order of features is not fixed.
+
+1. **More providers and models** — OpenCode, Gemini CLI, additional Agent Client Protocol (ACP)-compatible agents, and local models.
+2. **Searchable model picker** — Search models, save favorites, and see supported capabilities.
+3. **Project defaults** — Remember the preferred provider, model, and thinking level for each project.
+4. **Unified session dashboard** — See sessions from all providers together.
+5. **Per-session model selection** — Use different providers and models in different sessions simultaneously.
+6. **Session search and filters** — Search titles and conversations; filter by project, provider, status, or date.
+7. **Session organization** — Pin, rename, tag, and archive sessions.
+8. **Agent-question dialogs** — Answer agents' multiple-choice and free-text questions inside LazyAI.
+9. **Attention queue** — Jump to sessions waiting for approval, an answer, or review.
+10. **Notifications** — Get notified when a session finishes, fails, or needs input.
+11. **Live tool activity** — See commands, file edits, tool results, and errors as they happen.
+12. **Better conversation navigation** — Search within a conversation, jump between messages, and preserve scroll position.
+13. **Prompt drafts and history** — Keep drafts per session and reuse previous prompts.
+14. **External-editor input** — Write longer prompts in your preferred editor.
+15. **Reusable prompt templates** — Save prompts for reviews, debugging, testing, and implementation.
+16. **Context attachments** — Add files, selected lines, Git diffs, or editor selections to prompts.
+17. **Task queue** — Queue follow-up prompts, cancel queued work, and control concurrency.
+18. **Git changes panel** — Browse changed files and inspect diffs inside LazyAI.
+19. **Worktree per task** — Give concurrent coding tasks separate branches and working directories.
+20. **Session branching** — Start an alternative conversation from an earlier message where supported.
+21. **Cross-provider handoff** — Prepare a summary to continue work with another agent.
+22. **Conversation export** — Export selected messages or entire conversations to Markdown.
+23. **Agent/model comparisons** — Run the same task in isolated workspaces and compare changes and test results.
+24. **Usage dashboard** — Track available token usage, limits, duration, and clearly labeled cost estimates.
+25. **Provider diagnostics** — Explain missing installations, authentication issues, unavailable models, and incompatible versions.
+26. **MCP and tool visibility** — Inspect connected tools, capabilities, and connection status.
+27. **Deeper Neovim integration** — Send selections, open changed files, and jump between editor and session.
+28. **Issue-to-task workflows** — Connect an issue to a session, worktree, test results, and pull request.
+29. **Remote sessions** — Connect to agents running on another machine.
+30. **Background execution** — Keep tasks running after closing the TUI and reconnect later.
+31. **Persistent preferences** — Remember layout, filters, selections, and other settings.
+32. **Customizable interface** — Themes, keybindings, compact layouts, and resizable panels.
+33. **Command palette** — Search and execute app actions, such as starting a session or changing models, without remembering shortcuts.
+34. **Extensible provider adapters** — Make adding future agents easier through a consistent integration interface.
+35. **Direct model API support** — Connect directly to model services, with LazyAI managing the agent loop, tools, and conversation storage; a larger architectural expansion.
+
 ## Table of Contents
 
 - [Elevator Pitch](#elevator-pitch)
 - [Sponsorship](#sponsorship)
+- [Roadmap](#roadmap)
 - [Features](#features)
   - [Browse Projects and Sessions](#browse-projects-and-sessions)
   - [Resume and Prompt Sessions](#resume-and-prompt-sessions)
