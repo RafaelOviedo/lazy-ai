@@ -33,8 +33,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
     /**
      * Cleans up event bindings when the element leaves the document.
      */
-    disconnectedCallback(): void {
-    }
+    disconnectedCallback(): void { }
 
     /**
      * Updates the selected project name shown when no session is selected.
@@ -184,7 +183,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
 
       return `
         <div>
-          <div class="context-panel__muted">Model: </div> <div>${escapeHtml(this.selectedSessionValue.model)}</div>
+          <div class="context-panel__muted">Model (Thinking level): </div> <div>${escapeHtml(this.selectedSessionValue.model)} (${escapeHtml(this.selectedSessionValue.effort ?? "Unknown")})</div>
           <div> · </div>
           <div class="context-panel__muted">Updated: </div> <div>${escapeHtml(this.selectedSessionValue.relativeUpdated)}</div>
           <div> · </div>

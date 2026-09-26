@@ -388,7 +388,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     contextPanel.projectName = selectedProjectName;
     contextPanel.projectPath = selectedProjectPath;
-    contextPanel.selectedSession = selectedSession;
+    const liveState = selectedSession ? sessionRunController.getState(selectedSession.id) : null;
+    const liveSession = liveState?.session;
+    // Some providers don't persist effort; retain the level applied in this app.
+    contextPanel.selectedSession = selectedSession && liveSession?.effort !== undefined
+      && (liveState?.busy || liveSession.updatedAt >= selectedSession.updatedAt)
+      ? { ...selectedSession, effort: liveSession.effort }
+      : selectedSession;
   }
 
   function onProjectChange(event: Event) {

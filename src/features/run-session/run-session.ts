@@ -74,7 +74,8 @@ export function createSessionRunController(options: Options) {
   async function refreshSession(run: Run): Promise<void> {
     const session = await options.syncSession(run.session.id, run.session.projectPath);
     if (!isCurrent(run) || !session) return;
-    run.session = session;
+    // Keep the accepted level while providers finish flushing their history.
+    run.session = { ...session, effort: run.session.effort !== undefined ? run.session.effort : session.effort };
     publish(run);
   }
 
@@ -114,10 +115,11 @@ export function createSessionRunController(options: Options) {
     let didStart = false;
 
     try {
-      const { turnId } = await options.client.startTurn(threadId, text, session.projectPath);
+      const { turnId, effort } = await options.client.startTurn(threadId, text, session.projectPath);
       didStart = true;
       if (!isCurrent(run)) return;
       run.turnId = turnId;
+      run.session = { ...run.session, effort };
       run.status = run.approvals ? "awaitingApproval" : "thinking";
       publish(run);
       if (run.interruptRequested) void interruptRun(run);

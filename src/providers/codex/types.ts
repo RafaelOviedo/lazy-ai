@@ -112,6 +112,7 @@ export type TurnContextEvent = {
   payload?: {
     cwd?: string;
     model?: string;
+    effort?: string | null;
   };
 };
 
@@ -121,6 +122,7 @@ export type ThreadSettingsAppliedEvent = {
     type: "thread_settings_applied";
     thread_settings?: {
       model?: string;
+      reasoning_effort?: string | null;
     };
   };
 };
@@ -161,6 +163,7 @@ export type RawUsageLimitWindow = {
 export type SessionContext = {
   cwd?: string;
   model?: string;
+  effort?: string | null;
   contextUsage?: ContextUsage;
   sessionId?: string;
   title?: string;

@@ -67,7 +67,8 @@ export interface ProviderRuntimeClient {
    */
   setToolPermissionHandler?(handler: ToolPermissionHandler | null): void;
   startThread(cwd?: string): Promise<{ sessionId: string; threadId: string }>;
-  startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string }>;
+  /** Returns the accepted turn's thinking level, or null if unresolved. */
+  startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string; effort: string | null }>;
   waitForTurnCompletion(threadId: string, turnId?: string): Promise<{ errorMessage?: string; status: string }>;
 }
 

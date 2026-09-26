@@ -61,6 +61,7 @@ export class CodexSessionRepository implements SessionReader {
         projectPath: sessionContext.cwd,
         projectName: basename(sessionContext.cwd) || sessionContext.cwd,
         model: sessionContext.model ?? "unknown",
+        effort: sessionContext.effort,
         contextUsage: sessionContext.contextUsage,
         usageLimit: sessionContext.usageLimit,
         status: "saved",
@@ -304,6 +305,9 @@ export class CodexSessionRepository implements SessionReader {
 
           sessionContext.cwd = sessionContext.cwd ?? payload.cwd;
           sessionContext.model = payload.model ?? sessionContext.model;
+          if (payload.effort === null || this.readString(payload.effort)) {
+            sessionContext.effort = payload.effort;
+          }
           continue;
         }
 
@@ -311,6 +315,10 @@ export class CodexSessionRepository implements SessionReader {
           const payload = record.payload as NonNullable<ThreadSettingsAppliedEvent["payload"]>;
 
           sessionContext.model = payload.thread_settings?.model ?? sessionContext.model;
+          const effort = payload.thread_settings?.reasoning_effort;
+          if (effort === null || this.readString(effort)) {
+            sessionContext.effort = effort;
+          }
           continue;
         }
 

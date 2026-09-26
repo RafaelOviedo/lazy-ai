@@ -100,6 +100,7 @@ export type CodexAppServerStartResult = {
 
 export type CodexAppServerTurnStartResult = {
   turnId: string;
+  effort: string | null;
 };
 
 export type CodexAppServerTurnCompletionResult = {
@@ -292,6 +293,7 @@ export class CodexAppServerClient {
     if (threadEffort) threadEffort.overridden = effort !== null;
     return {
       turnId,
+      effort: turnEffort ?? threadEffort?.defaultEffort ?? null,
     };
   }
 

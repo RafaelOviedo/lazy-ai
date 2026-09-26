@@ -18,6 +18,8 @@ export type SessionSummary = {
   projectPath: string;
   projectName: string;
   model: string;
+  /** Latest applied thinking level; absent or null when unavailable. */
+  effort?: string | null;
   contextUsage?: ContextUsage;
   usageLimit?: UsageLimit;
   status: string;

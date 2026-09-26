@@ -172,7 +172,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   /**
    * Sends one turn, starting the underlying query on first use.
    */
-  async startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string }> {
+  async startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string; effort: string | null }> {
     this.assertNotDisposed();
 
     // Tolerates a caller that never reserved the session, rather than throwing.
@@ -216,7 +216,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       throw this.toError(error, "Failed to send the prompt to Claude Code.");
     }
 
-    return { turnId };
+    return { turnId, effort: session.effort };
   }
 
   /**
