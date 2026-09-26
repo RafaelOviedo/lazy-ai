@@ -80,8 +80,6 @@ type PendingTurnCompletion = {
   reject(error: Error): void;
   resolve(value: CodexAppServerTurnCompletionResult): void;
   threadId: string;
-  /** Re-armed while the thread waits on an approval, so unset between arms. */
-  timer?: ReturnType<typeof setTimeout>;
   turnId?: string;
 };
 
@@ -171,8 +169,6 @@ export class CodexAppServerClient {
   private pendingRequests = new Map<number, PendingRequest>();
   private pendingTurnCompletions = new Set<PendingTurnCompletion>();
   private pendingServerRequests = new Map<string, PendingServerRequest>();
-  /** Outstanding approval count per thread, so a blocked turn is not timed out. */
-  private pendingApprovalsByThread = new Map<string, number>();
   /** Changed paths per file-change item id, for the approval prompt to show. */
   private fileChangePathsByItemId = new Map<string, string[]>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
@@ -316,7 +312,8 @@ export class CodexAppServerClient {
     });
   }
 
-  async waitForTurnCompletion(threadId: string, turnId?: string, timeoutMs = 300000): Promise<CodexAppServerTurnCompletionResult> {
+  /** Long-running turns wait for completion, interruption, or process failure. */
+  async waitForTurnCompletion(threadId: string, turnId?: string): Promise<CodexAppServerTurnCompletionResult> {
     await this.initialize();
 
     const completedTurn = this.findCompletedTurn(threadId, turnId);
@@ -324,30 +321,12 @@ export class CodexAppServerClient {
     if (completedTurn) return completedTurn;
 
     return new Promise<CodexAppServerTurnCompletionResult>((resolve, reject) => {
-      const waiter: PendingTurnCompletion = {
+      this.pendingTurnCompletions.add({
         reject,
         resolve,
         threadId,
         turnId,
-      };
-
-      // A turn stops making progress while it waits on an approval, so the clock
-      // is restarted rather than allowed to fail a turn the user is still
-      // reading. Nothing else can stall this long without the process dying.
-      const armTimeout = (): void => {
-        waiter.timer = setTimeout(() => {
-          if (this.hasPendingApprovals(threadId)) {
-            armTimeout();
-            return;
-          }
-
-          this.pendingTurnCompletions.delete(waiter);
-          reject(new Error("Timed out waiting for Codex turn completion."));
-        }, timeoutMs);
-      };
-
-      armTimeout();
-      this.pendingTurnCompletions.add(waiter);
+      });
     });
   }
 
@@ -357,7 +336,6 @@ export class CodexAppServerClient {
     // prompt nothing can show any more.
     this.declinePendingServerRequests();
     this.toolPermissionHandler = null;
-    this.pendingApprovalsByThread.clear();
     this.fileChangePathsByItemId.clear();
 
     this.rejectPendingRequests(new Error("Codex app-server client disposed."));
@@ -545,7 +523,6 @@ export class CodexAppServerClient {
     for (const waiter of this.pendingTurnCompletions) {
       if (!this.matchesTurnCompletion(waiter, completion)) continue;
 
-      clearTimeout(waiter.timer);
       this.pendingTurnCompletions.delete(waiter);
       waiter.resolve(completion);
     }
@@ -604,7 +581,7 @@ export class CodexAppServerClient {
     const threadId = params.threadId ?? "";
     const isTerminalInput = params.kind === "writeStdin";
 
-    const decision = await this.askForToolPermission(threadId, {
+    const decision = await this.askForToolPermission({
       allowsSessionScope: offersSessionScope(params.availableDecisions),
       // Typing into a command that is already running is not something a stray
       // Enter should do.
@@ -639,7 +616,7 @@ export class CodexAppServerClient {
     const threadId = params.threadId ?? "";
     const changedPaths = this.takeFileChangePaths(params.itemId);
 
-    const decision = await this.askForToolPermission(threadId, {
+    const decision = await this.askForToolPermission({
       // Codex only honours a session-wide grant when it named the root it wants.
       allowsSessionScope: Boolean(params.grantRoot),
       defaultsToDeny: false,
@@ -662,21 +639,16 @@ export class CodexAppServerClient {
    * every caller turns into a decline rather than leaving the turn blocked.
    */
   private async askForToolPermission(
-    threadId: string,
     request: ToolPermissionRequest,
   ): Promise<ToolPermissionDecision | null> {
     const handler = this.toolPermissionHandler;
 
     if (!handler) return null;
 
-    this.trackPendingApproval(threadId, 1);
-
     try {
       return await handler(request);
     } catch {
       return null;
-    } finally {
-      this.trackPendingApproval(threadId, -1);
     }
   }
 
@@ -733,25 +705,6 @@ export class CodexAppServerClient {
     }
 
     this.pendingServerRequests.clear();
-  }
-
-  /**
-   * Counts the approvals a thread is waiting on, so a turn blocked on the user
-   * is not failed by its own completion timeout.
-   */
-  private trackPendingApproval(threadId: string, delta: number): void {
-    const nextCount = (this.pendingApprovalsByThread.get(threadId) ?? 0) + delta;
-
-    if (nextCount > 0) {
-      this.pendingApprovalsByThread.set(threadId, nextCount);
-      return;
-    }
-
-    this.pendingApprovalsByThread.delete(threadId);
-  }
-
-  private hasPendingApprovals(threadId: string): boolean {
-    return (this.pendingApprovalsByThread.get(threadId) ?? 0) > 0;
   }
 
   /**
@@ -883,7 +836,6 @@ export class CodexAppServerClient {
 
   private rejectPendingTurnCompletions(error: Error): void {
     for (const pendingTurnCompletion of this.pendingTurnCompletions.values()) {
-      clearTimeout(pendingTurnCompletion.timer);
       pendingTurnCompletion.reject(error);
     }
 

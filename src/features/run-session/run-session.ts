@@ -147,15 +147,12 @@ export function createSessionRunController(options: Options) {
         if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250));
         if (!isCurrent(run)) return;
       }
-    } catch (error) {
+    } catch {
       if (!isCurrent(run)) return;
       run.turnId = null;
       run.status = "failed";
       options.onTurnFinished(session.id, threadId);
-      const message = error instanceof Error && /timed out waiting for/i.test(error.message)
-        ? "Timed out waiting for a response. The session may still be running."
-        : "Failed to generate a response.";
-      options.reportActionError(`${options.providerLabel} session “${run.session.title}”: ${message}`);
+      options.reportActionError(`${options.providerLabel} session “${run.session.title}”: Failed to generate a response.`);
     } finally {
       stopPolling(run);
       if (isCurrent(run)) {
