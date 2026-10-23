@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
 import type { ActionErrorModalPayload } from "./types.js";
@@ -64,7 +64,7 @@ export function ensureActionErrorModalDefined(window: TermWindow): void {
       const title = this.payloadValue?.title ?? defaultTitle;
       const message = this.payloadValue?.message ?? defaultMessage;
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           action-error-modal {
             display: flex;
@@ -100,7 +100,7 @@ export function ensureActionErrorModalDefined(window: TermWindow): void {
         <legend class="action-error-modal__title">${escapeHtml(title)}</legend>
         <div class="action-error-modal__message">${escapeHtml(message)}</div>
         <div class="action-error-modal__actions">Press Enter or Esc to close</div>
-      `;
+      `);
     }
   }
 

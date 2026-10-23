@@ -1,6 +1,6 @@
 import type { SessionSummary } from "../../entities/session/index.js";
 import type { TermWindow } from "./types.js";
-import { escapeHtml } from "../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../shared/lib/html/index.js";
 import { formatTokenCount, getTokenBarSegments } from "../../shared/lib/tokens/index.js";
 
 /**
@@ -99,7 +99,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           context-panel {
             display: flex;
@@ -162,7 +162,7 @@ export function ensureContextPanelDefined(window: TermWindow): void {
         <div class="context-panel__content">
           ${this.renderContentMarkup()}
         </div>
-      `;
+      `);
     }
 
     /**

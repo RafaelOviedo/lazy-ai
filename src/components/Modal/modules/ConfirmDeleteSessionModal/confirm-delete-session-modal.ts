@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
 import type { ConfirmDeleteSessionModalPayload } from "./types.js";
@@ -56,7 +56,7 @@ export function ensureConfirmDeleteSessionModalDefined(window: TermWindow): void
     private render(): void {
       const sessionTitle = this.payloadValue?.sessionTitle ?? "Untitled session";
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           confirm-delete-session-modal {
             display: flex;
@@ -106,7 +106,7 @@ export function ensureConfirmDeleteSessionModalDefined(window: TermWindow): void
           <div class="confirm-delete-session-modal__warning">This cannot be undone</div>
           <div class="confirm-delete-session-modal__actions">To confirm press Enter, to cancel press Esc</div>
         </div>
-      `;
+      `);
     }
   }
 

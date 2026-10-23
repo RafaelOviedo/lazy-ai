@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 import { Keybindings } from "../../../../app/types.js";
 
 import type { ToolPermissionDecision } from "../../../../entities/provider/index.js";
@@ -149,7 +149,7 @@ export function ensureToolPermissionModalDefined(window: TermWindow): void {
     private render(): void {
       const request = this.payloadValue?.request;
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           tool-permission-modal {
             display: flex;
@@ -215,7 +215,7 @@ export function ensureToolPermissionModalDefined(window: TermWindow): void {
         <div class="tool-permission-modal__choices">${this.renderChoicesMarkup()}</div>
         ${this.renderQueueMarkup()}
         <div class="tool-permission-modal__actions">j/k to move, Enter to choose, Esc to deny</div>
-      `;
+      `);
     }
 
     private renderPathMarkup(): string {

@@ -1,3 +1,4 @@
+import { renderWithStableStyle } from "../../shared/lib/html/index.js";
 import { useModal } from "../../composables/useModal.js";
 import { ModalName } from "../../shared/lib/modal/index.js";
 import { Keybindings } from "../../app/types.js";
@@ -68,6 +69,12 @@ export function ensureModalDefined(window: TermWindow): void {
         this.tabIndex = 0;
       }
 
+      // Rendering every modal once registers its stylesheet while the screen is
+      // still small; registering one later restyles the whole screen.
+      for (const component of Object.keys(modalComponentMap) as ModalName[]) {
+        this.preloadModalShell(component);
+      }
+
       this.preloadModalShell(defaultPreloadedModal);
       this.unsubscribe = this.modal.subscribe(() => this.render());
       this.ownerDocument.addEventListener("keydown", this.onKeyDown);
@@ -135,7 +142,7 @@ export function ensureModalDefined(window: TermWindow): void {
       this.renderedComponent = modalConfig.component;
       this.hasRenderedShell = true;
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           app-modal {
             display: none;
@@ -155,7 +162,7 @@ export function ensureModalDefined(window: TermWindow): void {
         </style>
 
         <${modalComponent.tagName} data-modal-content="true"></${modalComponent.tagName}>
-      `;
+      `);
     }
 
     /**

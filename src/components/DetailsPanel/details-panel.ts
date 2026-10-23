@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../shared/lib/html/index.js";
 import { renderMarkdown } from "../../shared/lib/markdown/index.js";
 import type { ConversationMessage, SessionReader, SessionSummary } from "../../entities/session/index.js";
 import type { LiveConversationEvent } from "../../entities/provider/index.js";
@@ -386,7 +386,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           details-panel {
             display: flex;
@@ -555,7 +555,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         <div class="details-panel__content">
           ${this.renderContentMarkup()}
         </div>
-      `;
+      `);
 
       this.renderedSessionId = this.viewedSessionValue?.id ?? null;
       this.syncRenderedMessageFingerprints();

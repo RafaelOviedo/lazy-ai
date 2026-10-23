@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../shared/lib/html/index.js";
 import { Keybindings } from "../../app/types.js";
 import { isSameProjectPath, normalizeProjectPath } from "../../shared/lib/paths/index.js";
 
@@ -146,7 +146,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           projects-panel {
             display: flex;
@@ -232,7 +232,7 @@ export function ensureProjectsPanelDefined(window: TermWindow): void {
         <div class="projects-panel__content">
           ${this.renderContentMarkup()}
         </div>
-      `;
+      `);
     }
 
     /**

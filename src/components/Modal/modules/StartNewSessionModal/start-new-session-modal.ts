@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
 import type { StartNewSessionModalPayload } from "./types.js";
@@ -121,7 +121,7 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
     }
 
     private render(): void {
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           start-new-session-modal {
             display: flex;
@@ -184,7 +184,7 @@ export function ensureStartNewSessionModalDefined(window: TermWindow): void {
           <textarea class="start-new-session-modal__input" data-new-session-input="true" id="new-session-prompt"></textarea>
           <div class="start-new-session-modal__actions">To confirm press Enter, Ctrl+J for a new line, Esc to cancel</div>
         </div>
-      `;
+      `);
     }
   }
 

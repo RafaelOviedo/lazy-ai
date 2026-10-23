@@ -1,6 +1,7 @@
 /**
  * Registers the Keybindings panel custom element against a TermDOM window.
  */
+import { renderWithStableStyle } from "../../shared/lib/html/index.js";
 import type { FocusedPanel, TermWindow } from "./types.js";
 
 const spaceActionLabels: Record<FocusedPanel, string> = {
@@ -34,7 +35,15 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
 
       this.focusedPanelValue = value;
 
-      if (this.isConnected) {
+      if (!this.isConnected) return;
+
+      // Re-rendering would replace the <style> block, and TermDOM restyles the
+      // whole screen for a stylesheet change, so only the label text changes.
+      const spaceAction = this.querySelector<HTMLElement>("[data-space-action='true']");
+
+      if (spaceAction) {
+        spaceAction.textContent = this.renderSpaceActionMarkup();
+      } else {
         this.render();
       }
     }
@@ -50,7 +59,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           keybindings-panel {
             display: flex;
@@ -75,7 +84,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
           <span>Keybindings:</span>
           <div>
             <span class="keybindings-panel__key">Move: h/l/j/k</span> <span>|</span>
-            <span class="keybindings-panel__key">${this.renderSpaceActionMarkup()}</span> <span>|</span>
+            <span class="keybindings-panel__key" data-space-action="true">${this.renderSpaceActionMarkup()}</span> <span>|</span>
             <span class="keybindings-panel__key">New session: n</span> <span>|</span>
             <span class="keybindings-panel__key">Prompt session: p</span> <span>|</span>
             <span class="keybindings-panel__key">Delete session: d</span> <span>|</span>
@@ -85,7 +94,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
           </div>
         </div>
         <span>v1.4.0</span>
-      `;
+      `);
     }
 
     /**

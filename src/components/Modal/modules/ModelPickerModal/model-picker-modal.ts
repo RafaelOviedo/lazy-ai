@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 import { Keybindings } from "../../../../app/types.js";
 
 import type { ModelOption } from "../../../../entities/ai-model/index.js";
@@ -176,7 +176,7 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
     private render(): void {
       const groups = this.payloadValue?.groups ?? [];
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           model-picker-modal {
             display: flex;
@@ -258,7 +258,7 @@ export function ensureModelPickerModalDefined(window: TermWindow): void {
         <div class="model-picker-modal__content">${this.renderGroupsMarkup(groups)}</div>
         <div class="model-picker-modal__effort">${this.renderEffortMarkup()}</div>
         <div class="model-picker-modal__actions">j/k ↑/↓ model · h/l ←/→ thinking<br><br>Enter apply · Esc cancel</div>
-      `;
+      `);
     }
 
     /**

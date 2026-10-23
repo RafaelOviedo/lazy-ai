@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../shared/lib/html/index.js";
 import { getTokenBarSegments } from "../../shared/lib/tokens/index.js";
 
 import type { UsageLimitSnapshot, UsageLimitWindow } from "../../entities/provider/index.js";
@@ -160,7 +160,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           status-panel {
             display: block;
@@ -206,7 +206,7 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
 
         <legend class="status-panel__title">Global status</legend>
         <div class="status-panel__content">${this.renderContentMarkup()}</div>
-      `;
+      `);
     }
 
     /**

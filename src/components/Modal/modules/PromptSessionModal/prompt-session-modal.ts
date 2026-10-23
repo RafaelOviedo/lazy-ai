@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
 import type { PromptSessionModalPayload } from "./types.js";
@@ -123,7 +123,7 @@ export function ensurePromptSessionModalDefined(window: TermWindow): void {
     private render(): void {
       const sessionTitle = this.payloadValue?.sessionTitle ?? "Untitled session";
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           prompt-session-modal {
             display: flex;
@@ -187,7 +187,7 @@ export function ensurePromptSessionModalDefined(window: TermWindow): void {
           <textarea class="prompt-session-modal__input" data-session-prompt-input="true" id="session-prompt"></textarea>
           <div class="prompt-session-modal__actions">To confirm press Enter, Ctrl+J for a new line, Esc to cancel</div>
         </div>
-      `;
+      `);
     }
   }
 

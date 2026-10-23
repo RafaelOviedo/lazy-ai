@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../shared/lib/html/index.js";
+import { escapeHtml, renderWithStableStyle } from "../../../../shared/lib/html/index.js";
 
 import type { TermWindow } from "../../types.js";
 import type { KeybindingsModalPayload } from "./types.js";
@@ -71,7 +71,7 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
     private render(): void {
       const title = this.payloadValue?.title ?? "Keybindings"
 
-      this.innerHTML = `
+      renderWithStableStyle(this, `
         <style>
           keybindings-modal {
             display: flex;
@@ -144,7 +144,7 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
           <span class="keybindings-modal__key"><span style="color: #fff;">q</span> Quit</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">?</span> Keybindings</span>
         </div>
-      `;
+      `);
     }
   }
 
