@@ -6,6 +6,8 @@ export {
 export type { ActiveProviderSelection } from "./model/active-provider.js";
 export { SessionAlreadyRunningError, isSessionAlreadyRunningError } from "./model/session-already-running-error.js";
 export type {
+  LiveConversationEvent,
+  LiveConversationHandler,
   ProviderCapabilities,
   ProviderId,
   ProviderRuntimeClient,

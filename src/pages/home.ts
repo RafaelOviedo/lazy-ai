@@ -285,6 +285,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       toolApprovalController.cancelSessionRequests(threadId);
       if (sessionId !== threadId) toolApprovalController.cancelSessionRequests(sessionId);
     },
+    onTurnSettled: (sessionId) => detailsPanel?.settleLiveEvents(sessionId),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
     syncSession: async (sessionId, sessionProjectPath) => {
       // Background sessions may belong to a different project than the visible list.
@@ -299,6 +300,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   appServerClient.setToolPermissionHandler?.((request) =>
     sessionRunController.requestToolPermission(request, toolApprovalController.requestToolPermission));
+
+  appServerClient.setLiveConversationHandler?.((event) => {
+    if (!isDisposed) detailsPanel?.applyLiveEvent(event);
+  });
 
   function getPermissionSessionLabel(sessionId: string): string {
     const session = sessionRunController.getState(sessionId)?.session ?? sessionsPanel?.getSession(sessionId);

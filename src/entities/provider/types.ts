@@ -1,5 +1,5 @@
 import type { ProjectReader } from "../project";
-import type { SessionReader } from "../session";
+import type { ConversationMessage, SessionReader } from "../session";
 
 export type ProviderId = "claude-code" | "codex";
 
@@ -41,6 +41,19 @@ export type ToolPermissionDecision =
 export type ToolPermissionHandler = (request: ToolPermissionRequest) => Promise<ToolPermissionDecision>;
 
 /**
+ * Output a provider produces mid-turn, delivered before it reaches the on-disk
+ * transcript. The transcript stays authoritative: a panel drops these once the
+ * turn settles, so ids only need to be stable within one turn.
+ */
+export type LiveConversationEvent =
+  /** Full text of the assistant message currently being generated. */
+  | { sessionId: string; type: "stream"; text: string }
+  /** A finished assistant message; null when it carried no readable text. */
+  | { sessionId: string; type: "message"; message: ConversationMessage | null };
+
+export type LiveConversationHandler = (event: LiveConversationEvent) => void;
+
+/**
  * What a provider can actually be driven to do, rather than only read. Keeping
  * these separate stops one unimplemented action from gating the others.
  */
@@ -66,6 +79,11 @@ export interface ProviderRuntimeClient {
    * that gate tool use on an answer.
    */
   setToolPermissionHandler?(handler: ToolPermissionHandler | null): void;
+  /**
+   * Streams assistant output as it is generated. Only implemented by providers
+   * that expose it; others rely on re-reading the transcript.
+   */
+  setLiveConversationHandler?(handler: LiveConversationHandler | null): void;
   startThread(cwd?: string): Promise<{ sessionId: string; threadId: string }>;
   /** Returns the accepted turn's thinking level, or null if unresolved. */
   startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string; effort: string | null }>;

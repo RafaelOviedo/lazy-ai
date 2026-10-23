@@ -1,6 +1,7 @@
 import { escapeHtml } from "../../shared/lib/html/index.js";
 import { renderMarkdown } from "../../shared/lib/markdown/index.js";
 import type { ConversationMessage, SessionReader, SessionSummary } from "../../entities/session/index.js";
+import type { LiveConversationEvent } from "../../entities/provider/index.js";
 import type { PendingSessionPrompt } from "../../features/run-session/index.js";
 import type { TermWindow } from "./types.js";
 
@@ -26,6 +27,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private interruptedSessionIdValue: string | null = null;
     private sessionReader: SessionReader | null = null;
     private messages: ConversationMessage[] = [];
+    /** Last transcript read; `messages` is this plus whatever is still only live. */
+    private transcriptMessages: ConversationMessage[] = [];
+    private liveMessages: ConversationMessage[] = [];
+    private liveStreamText = "";
+    private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     private isLoading = false;
     private loadError: string | null = null;
     private loadVersion = 0;
@@ -60,6 +66,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     disconnectedCallback(): void {
       this.loadVersion += 1;
+      this.cancelLiveRefresh();
       this.removeEventListener("keydown", this.onKeyDown);
       this.stopThinkingSpinner();
     }
@@ -217,7 +224,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
         if (loadVersion !== this.loadVersion || this.viewedSessionValue?.id !== sessionId) return;
 
-        this.messages = conversation.messages;
+        this.transcriptMessages = conversation.messages;
+        this.messages = this.mergeLiveMessages();
         this.isLoading = false;
         this.loadError = null;
 
@@ -231,6 +239,98 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       } catch {
         // Preserve the last transcript when a background refresh fails.
       }
+    }
+
+    /**
+     * Shows assistant output the provider has produced but not yet persisted.
+     */
+    applyLiveEvent(event: LiveConversationEvent): void {
+      if (this.viewedSessionValue?.id !== event.sessionId) return;
+
+      if (event.type === "stream") {
+        this.liveStreamText = event.text;
+      } else {
+        this.liveStreamText = "";
+
+        if (event.message && !this.liveMessages.some((message) => message.id === event.message!.id)) {
+          this.liveMessages.push(event.message);
+        }
+      }
+
+      // A finished message is rare and should land at once; deltas are coalesced.
+      if (event.type === "message") {
+        this.refreshLive();
+      } else {
+        this.scheduleLiveRefresh();
+      }
+    }
+
+    /**
+     * Drops live rows once the turn is over, leaving the transcript as the only source.
+     */
+    settleLiveEvents(sessionId: string): void {
+      if (this.viewedSessionValue?.id !== sessionId) return;
+      if (!this.liveMessages.length && !this.liveStreamText) return;
+
+      this.resetLiveState();
+      this.refreshLive();
+    }
+
+    private resetLiveState(): void {
+      this.cancelLiveRefresh();
+      this.liveMessages = [];
+      this.liveStreamText = "";
+    }
+
+    private cancelLiveRefresh(): void {
+      if (!this.liveRefreshTimer) return;
+
+      clearTimeout(this.liveRefreshTimer);
+      this.liveRefreshTimer = null;
+    }
+
+    private scheduleLiveRefresh(): void {
+      if (this.liveRefreshTimer) return;
+
+      this.liveRefreshTimer = setTimeout(() => {
+        this.liveRefreshTimer = null;
+        this.refreshLive();
+      }, 50);
+    }
+
+    /**
+     * Appends the transcript with anything still only live, skipping rows the
+     * transcript has caught up on.
+     */
+    private mergeLiveMessages(): ConversationMessage[] {
+      const transcriptIds = new Set(this.transcriptMessages.map((message) => message.id));
+      const merged = [
+        ...this.transcriptMessages,
+        ...this.liveMessages.filter((message) => !transcriptIds.has(message.id)),
+      ];
+
+      if (this.liveStreamText && this.viewedSessionValue) {
+        merged.push({ id: `live-stream:${this.viewedSessionValue.id}`, role: "assistant", text: this.liveStreamText });
+      }
+
+      return merged;
+    }
+
+    private refreshLive(): void {
+      this.cancelLiveRefresh();
+
+      // A pending load or error view owns the screen; the next load merges live rows itself.
+      if (!this.isConnected || this.isLoading || this.loadError || !this.viewedSessionValue) return;
+
+      this.messages = this.mergeLiveMessages();
+
+      if (this.canReconcileExistingMarkup() && this.syncConversationMarkup(this.messages)) {
+        this.scrollToBottom();
+        return;
+      }
+
+      this.render();
+      this.scrollToBottom();
     }
 
     /**
@@ -521,6 +621,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       const loadVersion = ++this.loadVersion;
 
       this.loadError = null;
+      this.resetLiveState();
 
       if (!viewedSession) {
         this.messages = [];
@@ -532,6 +633,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       }
 
       this.messages = [];
+      this.transcriptMessages = [];
       this.renderedMessageFingerprints.clear();
       this.isLoading = true;
       this.render();
@@ -556,7 +658,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
         if (loadVersion !== this.loadVersion) return;
 
-        this.messages = conversation.messages;
+        this.transcriptMessages = conversation.messages;
+        this.messages = this.mergeLiveMessages();
         this.isLoading = false;
         this.loadError = null;
 
@@ -566,6 +669,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         if (loadVersion !== this.loadVersion) return;
 
         this.messages = [];
+        this.transcriptMessages = [];
         this.isLoading = false;
         this.loadError = "Failed to load the conversation. Press w on this session to retry.";
         this.render();
@@ -631,6 +735,19 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       if (this.shouldClearPendingUserPrompt(messages)) {
         this.pendingUserPromptValue = null;
+      }
+
+      // A live row is replaced by its transcript twin or dropped once the turn
+      // settles, so rows can now disappear as well as appear.
+      const currentIds = new Set(messages.map((message) => message.id));
+
+      for (const renderedId of [...this.renderedMessageFingerprints.keys()]) {
+        if (currentIds.has(renderedId)) continue;
+
+        const staleElement = this.getMessageElement(renderedId);
+
+        staleElement?.parentNode?.removeChild(staleElement);
+        this.renderedMessageFingerprints.delete(renderedId);
       }
 
       for (const message of messages) {

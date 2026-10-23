@@ -15,7 +15,7 @@ import type {
   SDKResultMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { ProviderRuntimeClient, ToolPermissionHandler } from "../../entities/provider/index.js";
+import type { LiveConversationHandler, ProviderRuntimeClient, ToolPermissionHandler } from "../../entities/provider/index.js";
 import type { ClaudeSdkClientOptions } from "./types.js";
 
 type TurnCompletion = {
@@ -94,6 +94,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   private readonly canResumeSession: ClaudeSdkClientOptions["canResumeSession"];
   private readonly sessions = new Map<string, LiveSession>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
+  private liveConversationHandler: LiveConversationHandler | null = null;
   private isDisposed = false;
 
   constructor(options: ClaudeSdkClientOptions = {}, private readonly createQuery: typeof query = query) {
@@ -113,6 +114,10 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
     this.toolPermissionHandler = handler;
+  }
+
+  setLiveConversationHandler(handler: LiveConversationHandler | null): void {
+    this.liveConversationHandler = handler;
   }
 
   /**
@@ -277,6 +282,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   dispose(): void {
     this.isDisposed = true;
     this.toolPermissionHandler = null;
+    this.liveConversationHandler = null;
 
     for (const session of this.sessions.values()) {
       this.closeSession(session, new Error("Claude Code client disposed."));
@@ -329,6 +335,9 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       // `default` is what makes Claude Code ask at all; a looser mode would skip
       // the approval modal entirely.
       permissionMode: "default",
+      // Without this the SDK only yields whole messages, so nothing is shown
+      // until a block is finished.
+      includePartialMessages: true,
       ...(session.isResumed ? { resume: session.sessionId } : { sessionId: session.sessionId }),
       // Omitted when unset so Claude Code applies its own configured default.
       ...(this.model ? { model: this.model } : {}),
@@ -351,9 +360,14 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     if (!sessionQuery) return;
 
     try {
+      const stream = { text: "" };
+
       for await (const message of sessionQuery as AsyncIterable<SDKMessage>) {
         if (message.type === "result") {
+          stream.text = "";
           this.recordTurnCompletion(session, message);
+        } else {
+          this.emitLiveMessage(session, message, stream);
         }
       }
 
@@ -375,6 +389,61 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       session.input = null;
       session.query = null;
     }
+  }
+
+  /**
+   * Forwards assistant output the moment the SDK yields it. Claude Code only
+   * appends to its transcript once a block is finished, so reading that file is
+   * always behind what the stream already knows.
+   */
+  private emitLiveMessage(session: LiveSession, message: SDKMessage, stream: { text: string }): void {
+    const handler = this.liveConversationHandler;
+
+    if (!handler) return;
+
+    // Subagent traffic belongs to a tool call, not to the visible conversation.
+    if ("parent_tool_use_id" in message && message.parent_tool_use_id) return;
+
+    try {
+      if (message.type === "stream_event") {
+        const event = message.event;
+
+        if (event.type === "message_start") {
+          stream.text = "";
+        } else if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          stream.text += event.delta.text;
+          handler({ sessionId: session.sessionId, type: "stream", text: stream.text });
+        }
+
+        return;
+      }
+
+      if (message.type !== "assistant") return;
+
+      stream.text = "";
+
+      const text = this.readAssistantText(message.message.content);
+
+      handler({
+        sessionId: session.sessionId,
+        type: "message",
+        message: text
+          ? { id: message.uuid, role: "assistant", text, timestamp: new Date().toISOString() }
+          : null,
+      });
+    } catch {
+      // A display listener must never take down the pump that settles turns.
+    }
+  }
+
+  private readAssistantText(content: unknown): string {
+    if (!Array.isArray(content)) return "";
+
+    return content
+      .map((block) => (block?.type === "text" && typeof block.text === "string" ? block.text : ""))
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
   }
 
   /**

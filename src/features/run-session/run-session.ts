@@ -31,6 +31,8 @@ type Options = {
   providerLabel: string;
   onChange(state: SessionRunState): void;
   onTurnFinished(sessionId: string, threadId: string): void;
+  /** Called once the transcript has had its final reads, so live output can yield to it. */
+  onTurnSettled?(sessionId: string): void;
   reportActionError(message: string): void;
   refreshUsageLimit(): void;
   syncSession(sessionId: string, projectPath: string): Promise<SessionSummary | null>;
@@ -156,6 +158,7 @@ export function createSessionRunController(options: Options) {
     } finally {
       stopPolling(run);
       if (isCurrent(run)) {
+        options.onTurnSettled?.(session.id);
         run.busy = false;
         run.pendingPrompt = null;
         publish(run);
