@@ -224,6 +224,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
         if (loadVersion !== this.loadVersion || this.viewedSessionValue?.id !== sessionId) return;
 
+        // Polls mostly find nothing new. Touching the rows or scrolling would
+        // still make the terminal re-lay out the whole transcript, which starves
+        // the spinner and key handling on long sessions.
+        if (!this.loadError && this.renderedSessionId === sessionId && this.isSameTranscript(conversation.messages)) return;
+
         this.transcriptMessages = conversation.messages;
         this.messages = this.mergeLiveMessages();
         this.isLoading = false;
@@ -740,19 +745,23 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       // A live row is replaced by its transcript twin or dropped once the turn
       // settles, so rows can now disappear as well as appear.
       const currentIds = new Set(messages.map((message) => message.id));
+      // One pass over the rendered rows; a lookup per message made each refresh
+      // quadratic in the transcript length.
+      const messageElements = this.getMessageElementsById();
 
       for (const renderedId of [...this.renderedMessageFingerprints.keys()]) {
         if (currentIds.has(renderedId)) continue;
 
-        const staleElement = this.getMessageElement(renderedId);
+        const staleElement = messageElements.get(renderedId);
 
         staleElement?.parentNode?.removeChild(staleElement);
+        messageElements.delete(renderedId);
         this.renderedMessageFingerprints.delete(renderedId);
       }
 
       for (const message of messages) {
         const fingerprint = this.getMessageFingerprint(message);
-        const existingMessage = this.getMessageElement(message.id);
+        const existingMessage = messageElements.get(message.id);
 
         if (existingMessage) {
           if (this.renderedMessageFingerprints.get(message.id) !== fingerprint) {
@@ -760,6 +769,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           }
         } else {
           messagesContainer.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
+
+          const insertedMessage = messagesContainer.lastElementChild;
+
+          if (insertedMessage) messageElements.set(message.id, insertedMessage as HTMLElement);
         }
 
         this.renderedMessageFingerprints.set(message.id, fingerprint);
@@ -985,6 +998,19 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
+     * Returns whether a transcript read matches the one already shown.
+     */
+    private isSameTranscript(messages: ConversationMessage[]): boolean {
+      if (messages.length !== this.transcriptMessages.length) return false;
+
+      return messages.every((message, index) => {
+        const shownMessage = this.transcriptMessages[index];
+
+        return message.id === shownMessage.id && this.getMessageFingerprint(message) === this.getMessageFingerprint(shownMessage);
+      });
+    }
+
+    /**
      * Finds the transcript container used for incremental message updates.
      */
     private getMessagesContainer(): HTMLElement | null {
@@ -992,18 +1018,20 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Finds one rendered message row by message id.
+     * Maps rendered message rows by message id, keeping the first row per id.
      */
-    private getMessageElement(messageId: string): HTMLElement | null {
-      const renderedMessages = this.querySelectorAll<HTMLElement>("[data-conversation-message='true']");
+    private getMessageElementsById(): Map<string, HTMLElement> {
+      const messageElements = new Map<string, HTMLElement>();
 
-      for (const renderedMessage of renderedMessages) {
-        if (renderedMessage.getAttribute("data-message-id") === messageId) {
-          return renderedMessage;
+      for (const renderedMessage of this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")) {
+        const messageId = renderedMessage.getAttribute("data-message-id");
+
+        if (messageId !== null && !messageElements.has(messageId)) {
+          messageElements.set(messageId, renderedMessage);
         }
       }
 
-      return null;
+      return messageElements;
     }
 
     /**

@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { homedir } from "node:os";
 
+import { IncrementalJsonlReader } from "../../shared/lib/jsonl/index.js";
 import { isSameProjectPath } from "../../shared/lib/paths/index.js";
 
 import type { UsageLimitSnapshot } from "../../entities/provider/index.js";
@@ -31,6 +32,9 @@ const injectedTextPrefixes = [
 export class ClaudeSessionRepository implements SessionReader {
   private readonly projectsDirectoryPath: string;
   private readonly sessionContextCache = new Map<string, { context: ClaudeSessionContext; modifiedAtMs: number }>();
+  private readonly conversationReader = new IncrementalJsonlReader<ConversationMessage>();
+  /** Transcript paths seen by any walk, so an open conversation is not searched for on every poll. */
+  private readonly sessionFilePaths = new Map<string, string>();
 
   constructor(options: ClaudeSessionRepositoryOptions = {}) {
     const claudeRootPath = options.claudeRootPath ?? join(homedir(), ".claude");
@@ -109,6 +113,17 @@ export class ClaudeSessionRepository implements SessionReader {
    * Returns display-ready conversation messages for one persisted session.
    */
   async getConversation(sessionId: string): Promise<SessionConversation> {
+    const knownFilePath = this.sessionFilePaths.get(sessionId);
+
+    if (knownFilePath) {
+      try {
+        return { sessionId, messages: await this.readConversationFile(knownFilePath, sessionId) };
+      } catch {
+        // Deleted or moved since it was found; search for it again below.
+        this.sessionFilePaths.delete(sessionId);
+      }
+    }
+
     const sessionFiles = await this.findSessionFiles(this.projectsDirectoryPath, true);
     const sessionFilePath = sessionFiles.get(sessionId);
 
@@ -229,25 +244,22 @@ export class ClaudeSessionRepository implements SessionReader {
    */
   private async readConversationMessages(filePath: string, sessionId: string): Promise<ConversationMessage[]> {
     try {
-      const file = await readFile(filePath, "utf8");
-      const messages: ConversationMessage[] = [];
-
-      for (const [index, line] of file.split("\n").entries()) {
-        const record = this.parseRecord(line);
-
-        if (!record) continue;
-
-        const message = this.readConversationMessage(record, `${sessionId}:${index}`);
-
-        if (message) {
-          messages.push(message);
-        }
-      }
-
-      return messages;
+      return await this.readConversationFile(filePath, sessionId);
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Reads a transcript's messages, parsing only what was appended since the
+   * last read. Throws when the file cannot be read.
+   */
+  private readConversationFile(filePath: string, sessionId: string): Promise<ConversationMessage[]> {
+    return this.conversationReader.read(filePath, (line, index) => {
+      const record = this.parseRecord(line);
+
+      return record ? this.readConversationMessage(record, `${sessionId}:${index}`) : null;
+    });
   }
 
   /**
@@ -389,6 +401,7 @@ export class ClaudeSessionRepository implements SessionReader {
           if (!sessionId || sessionFiles.has(sessionId)) continue;
 
           sessionFiles.set(sessionId, entryPath);
+          this.sessionFilePaths.set(sessionId, entryPath);
         }
       } catch {
         return;

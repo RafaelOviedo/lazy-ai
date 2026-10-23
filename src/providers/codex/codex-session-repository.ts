@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 
 import type { UsageLimit, UsageLimitSnapshot } from "../../entities/provider/index.js";
 import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
+import { IncrementalJsonlReader } from "../../shared/lib/jsonl/index.js";
 import { isSameProjectPath } from "../../shared/lib/paths/index.js";
 import type {
   CodexSessionRepositoryOptions,
@@ -21,6 +22,9 @@ import type {
 export class CodexSessionRepository implements SessionReader {
   private readonly sessionIndexPath: string;
   private readonly sessionsDirectoryPath: string;
+  private readonly conversationReader = new IncrementalJsonlReader<ConversationMessage>();
+  /** Session file paths seen by any walk, so an open conversation is not searched for on every poll. */
+  private readonly sessionFilePaths = new Map<string, string>();
 
   constructor(options: CodexSessionRepositoryOptions = {}) {
     const codexRootPath = options.codexRootPath ?? join(homedir(), ".codex");
@@ -75,6 +79,17 @@ export class CodexSessionRepository implements SessionReader {
    * Returns display-ready conversation messages for one persisted session.
    */
   async getConversation(sessionId: string): Promise<SessionConversation> {
+    const knownFilePath = this.sessionFilePaths.get(sessionId);
+
+    if (knownFilePath) {
+      try {
+        return { sessionId, messages: await this.readConversationFile(knownFilePath, sessionId) };
+      } catch {
+        // Deleted or moved since it was found; search for it again below.
+        this.sessionFilePaths.delete(sessionId);
+      }
+    }
+
     const sessionFiles = await this.findSessionFiles(this.sessionsDirectoryPath);
     const sessionFilePath = sessionFiles.get(sessionId);
 
@@ -133,26 +148,24 @@ export class CodexSessionRepository implements SessionReader {
    */
   private async readConversationMessages(filePath: string, sessionId: string): Promise<ConversationMessage[]> {
     try {
-      const file = await readFile(filePath, "utf8");
-      const messages: ConversationMessage[] = [];
-
-      for (const [index, line] of file.split("\n").entries()) {
-        const trimmedLine = line.trim();
-
-        if (!trimmedLine) continue;
-
-        const record = this.parseJsonObject(trimmedLine);
-        const message = this.readConversationMessage(record, `${sessionId}:${index}`);
-
-        if (message) {
-          messages.push(message);
-        }
-      }
-
-      return messages;
+      return await this.readConversationFile(filePath, sessionId);
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Reads a session file's messages, parsing only what was appended since the
+   * last read. Throws when the file cannot be read.
+   */
+  private readConversationFile(filePath: string, sessionId: string): Promise<ConversationMessage[]> {
+    return this.conversationReader.read(filePath, (line, index) => {
+      const trimmedLine = line.trim();
+
+      if (!trimmedLine) return null;
+
+      return this.readConversationMessage(this.parseJsonObject(trimmedLine), `${sessionId}:${index}`);
+    });
   }
 
   /**
@@ -473,6 +486,7 @@ export class CodexSessionRepository implements SessionReader {
           if (!sessionId || sessionFiles.has(sessionId)) continue;
 
           sessionFiles.set(sessionId, entryPath);
+          this.sessionFilePaths.set(sessionId, entryPath);
         }
       } catch {
         return;
