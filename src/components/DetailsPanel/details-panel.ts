@@ -18,6 +18,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
   // stream updates are paced to leave the event loop room for key handling.
   const thinkingSpinnerIntervalMs = 150;
   const liveStreamRefreshIntervalMs = 200;
+  // TermDOM restyles a parent's whole subtree when a child is added or removed.
+  // Rows therefore go into small groups, each nested as the last child of the
+  // one before, so appending only ever touches the short tail group.
+  const messageGroupSize = 25;
 
   /**
    * Renders the explicitly opened conversation.
@@ -588,23 +592,28 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           ${this.isViewedSessionPendingPrompt() || this.isViewedSessionThinking() || this.isViewedSessionInterrupted()
             ? ""
             : `<div class="details-panel__muted" data-empty-conversation="true" style="margin-top: 0.5rem;">No conversation messages found for this session.</div>`}
-          <div data-conversation-messages="true">
-            ${this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
-            ${this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""}
-            ${this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
-          </div>
+          <div data-conversation-messages="true">${this.renderStatusRowsMarkup()}</div>
         `;
       }
 
       return `
         <div class="details-panel__session-title">${escapeHtml(this.viewedSessionValue.title)}</div>
-        <div data-conversation-messages="true">
-          ${this.messages.map((message) => this.renderMessageMarkup(message)).join("")}
-          ${this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""}
-          ${this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""}
-          ${this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""}
-        </div>
+        <div data-conversation-messages="true">${this.renderMessageGroupsMarkup(this.messages)}${this.renderStatusRowsMarkup()}</div>
       `;
+    }
+
+    /**
+     * Status rows live in their own small container, so showing or clearing one
+     * does not restyle the transcript beside it.
+     */
+    private renderStatusRowsMarkup(): string {
+      return `<div data-status-rows="true">${
+        this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""
+      }${
+        this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""
+      }${
+        this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""
+      }</div>`;
     }
 
     /**
@@ -724,6 +733,52 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Builds one transcript row.
      */
+    private renderMessageGroupsMarkup(messages: ConversationMessage[]): string {
+      const groupRows: string[] = [];
+
+      for (let start = 0; start < messages.length; start += messageGroupSize) {
+        groupRows.push(messages.slice(start, start + messageGroupSize).map((message) => this.renderMessageMarkup(message)).join(""));
+      }
+
+      return groupRows.reduceRight((nestedMarkup, rowsMarkup) => this.renderMessageGroupMarkup(rowsMarkup + nestedMarkup), "");
+    }
+
+    private renderMessageGroupMarkup(innerMarkup = ""): string {
+      return `<div data-message-group="true">${innerMarkup}</div>`;
+    }
+
+    /**
+     * Returns the innermost group, which is the only one that takes new rows.
+     */
+    private getTailMessageGroup(messagesContainer: HTMLElement): HTMLElement | null {
+      return [...messagesContainer.querySelectorAll<HTMLElement>("[data-message-group='true']")].at(-1) ?? null;
+    }
+
+    /**
+     * Opens a new tail group inside the current one, or as the first group.
+     */
+    private appendMessageGroup(messagesContainer: HTMLElement, tailGroup: HTMLElement | null): HTMLElement | null {
+      if (tailGroup) {
+        tailGroup.insertAdjacentHTML("beforeend", this.renderMessageGroupMarkup());
+        return tailGroup.lastElementChild as HTMLElement | null;
+      }
+
+      messagesContainer.insertAdjacentHTML("afterbegin", this.renderMessageGroupMarkup());
+      return messagesContainer.firstElementChild as HTMLElement | null;
+    }
+
+    /**
+     * Drops groups left with no rows and no nested group, innermost first.
+     */
+    private removeEmptyMessageGroups(group: HTMLElement | null): void {
+      while (group?.getAttribute("data-message-group") === "true" && group.childElementCount === 0) {
+        const parentGroup = group.parentElement;
+
+        group.parentNode?.removeChild(group);
+        group = parentGroup;
+      }
+    }
+
     private renderMessageMarkup(message: ConversationMessage): string {
       return `
         <div class="details-panel__message" data-conversation-message="true" data-message-id="${escapeHtml(message.id)}">
@@ -785,20 +840,19 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       // One pass over the rendered rows; a lookup per message made each refresh
       // quadratic in the transcript length.
       const messageElements = this.getMessageElementsById();
-      // Status rows trail the transcript and stay in place unless their own
-      // state changes; pulling them out and back in on every refresh made the
-      // terminal restyle every row. New messages go in above them.
-      const firstStatusRow = this.getPendingUserPromptElement() ?? this.getThinkingElement() ?? this.getInterruptedElement();
-
       for (const renderedId of [...this.renderedMessageFingerprints.keys()]) {
         if (currentIds.has(renderedId)) continue;
 
         const staleElement = messageElements.get(renderedId);
+        const group = staleElement?.parentElement ?? null;
 
         staleElement?.parentNode?.removeChild(staleElement);
+        this.removeEmptyMessageGroups(group);
         messageElements.delete(renderedId);
         this.renderedMessageFingerprints.delete(renderedId);
       }
+
+      let tailGroup = this.getTailMessageGroup(messagesContainer);
 
       for (const message of messages) {
         const fingerprint = this.getMessageFingerprint(message);
@@ -808,16 +862,15 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           if (this.renderedMessageFingerprints.get(message.id) !== fingerprint) {
             existingMessage.innerHTML = this.renderMessageInnerMarkup(message);
           }
-        } else if (firstStatusRow) {
-          firstStatusRow.insertAdjacentHTML("beforebegin", this.renderMessageMarkup(message));
-
-          const insertedMessage = firstStatusRow.previousElementSibling;
-
-          if (insertedMessage) messageElements.set(message.id, insertedMessage as HTMLElement);
         } else {
-          messagesContainer.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
+          // The tail group holds only rows, so its child count is its row count.
+          if (!tailGroup || tailGroup.childElementCount >= messageGroupSize) {
+            tailGroup = this.appendMessageGroup(messagesContainer, tailGroup);
+          }
 
-          const insertedMessage = messagesContainer.lastElementChild;
+          tailGroup?.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
+
+          const insertedMessage = tailGroup?.lastElementChild;
 
           if (insertedMessage) messageElements.set(message.id, insertedMessage as HTMLElement);
         }
@@ -844,9 +897,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
-      const messagesContainer = this.getMessagesContainer();
+      const statusRowsContainer = this.getStatusRowsContainer();
 
-      if (!messagesContainer) {
+      if (!statusRowsContainer) {
         this.render();
         return;
       }
@@ -877,7 +930,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         if (thinkingElement) {
           thinkingElement.insertAdjacentHTML("beforebegin", this.renderPendingUserPromptMarkup());
         } else {
-          messagesContainer.insertAdjacentHTML("beforeend", this.renderPendingUserPromptMarkup());
+          statusRowsContainer.insertAdjacentHTML("afterbegin", this.renderPendingUserPromptMarkup());
         }
 
         this.scrollToBottom();
@@ -894,9 +947,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
-      const messagesContainer = this.getMessagesContainer();
+      const statusRowsContainer = this.getStatusRowsContainer();
 
-      if (!messagesContainer) {
+      if (!statusRowsContainer) {
         this.render();
         return;
       }
@@ -919,7 +972,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.removeEmptyConversationMarkup();
 
       if (!existingThinkingRow) {
-        messagesContainer.insertAdjacentHTML("beforeend", this.renderThinkingMarkup());
+        statusRowsContainer.insertAdjacentHTML("beforeend", this.renderThinkingMarkup());
         this.scrollToBottom();
       }
 
@@ -935,9 +988,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
-      const messagesContainer = this.getMessagesContainer();
+      const statusRowsContainer = this.getStatusRowsContainer();
 
-      if (!messagesContainer) {
+      if (!statusRowsContainer) {
         this.render();
         return;
       }
@@ -959,7 +1012,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.removeEmptyConversationMarkup();
 
       if (!existingInterruptedRow) {
-        messagesContainer.insertAdjacentHTML("beforeend", this.renderInterruptedMarkup());
+        statusRowsContainer.insertAdjacentHTML("beforeend", this.renderInterruptedMarkup());
         this.scrollToBottom();
       }
     }
@@ -1062,6 +1115,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private getMessagesContainer(): HTMLElement | null {
       return this.querySelector<HTMLElement>("[data-conversation-messages='true']");
+    }
+
+    /**
+     * Finds the container for the pending, thinking, and interrupted rows.
+     */
+    private getStatusRowsContainer(): HTMLElement | null {
+      return this.querySelector<HTMLElement>("[data-status-rows='true']");
     }
 
     /**
