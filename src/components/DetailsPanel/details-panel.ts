@@ -14,7 +14,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
   }
 
   const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-  const thinkingSpinnerIntervalMs = 80;
+  // Every screen change re-lays out the whole transcript, so animation and
+  // stream updates are paced to leave the event loop room for key handling.
+  const thinkingSpinnerIntervalMs = 150;
+  const liveStreamRefreshIntervalMs = 200;
 
   /**
    * Renders the explicitly opened conversation.
@@ -299,8 +302,45 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       this.liveRefreshTimer = setTimeout(() => {
         this.liveRefreshTimer = null;
+        this.refreshLiveStream();
+      }, liveStreamRefreshIntervalMs);
+    }
+
+    /**
+     * Applies streamed text by rewriting only the streaming row. Everything else
+     * that changes rows goes through `refreshLive` or a transcript sync, so the
+     * other rows are already current.
+     */
+    private refreshLiveStream(): void {
+      const viewedSessionId = this.viewedSessionValue?.id;
+      const canPatch = viewedSessionId && this.liveStreamText && !this.isLoading && !this.loadError
+        && this.isConnected && this.canReconcileExistingMarkup();
+      const streamId = viewedSessionId ? this.getLiveStreamMessageId(viewedSessionId) : "";
+      const streamElement = canPatch ? this.getMessageElementsById().get(streamId) : undefined;
+
+      // The first delta has no row yet, and an empty stream means the row goes away.
+      if (!streamElement) {
         this.refreshLive();
-      }, 50);
+        return;
+      }
+
+      this.messages = this.mergeLiveMessages();
+
+      const streamMessage = this.messages.find((message) => message.id === streamId);
+
+      if (!streamMessage) return;
+
+      const fingerprint = this.getMessageFingerprint(streamMessage);
+
+      if (this.renderedMessageFingerprints.get(streamId) === fingerprint) return;
+
+      streamElement.innerHTML = this.renderMessageInnerMarkup(streamMessage);
+      this.renderedMessageFingerprints.set(streamId, fingerprint);
+      this.scrollToBottom();
+    }
+
+    private getLiveStreamMessageId(sessionId: string): string {
+      return `live-stream:${sessionId}`;
     }
 
     /**
@@ -315,7 +355,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       ];
 
       if (this.liveStreamText && this.viewedSessionValue) {
-        merged.push({ id: `live-stream:${this.viewedSessionValue.id}`, role: "assistant", text: this.liveStreamText });
+        merged.push({ id: this.getLiveStreamMessageId(this.viewedSessionValue.id), role: "assistant", text: this.liveStreamText });
       }
 
       return merged;
@@ -734,9 +774,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (!messagesContainer) return false;
 
       this.syncTitleMarkup();
-      this.removeThinkingMarkup();
-      this.removePendingUserPromptMarkup();
-      this.removeInterruptedMarkup();
 
       if (this.shouldClearPendingUserPrompt(messages)) {
         this.pendingUserPromptValue = null;
@@ -748,6 +785,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       // One pass over the rendered rows; a lookup per message made each refresh
       // quadratic in the transcript length.
       const messageElements = this.getMessageElementsById();
+      // Status rows trail the transcript and stay in place unless their own
+      // state changes; pulling them out and back in on every refresh made the
+      // terminal restyle every row. New messages go in above them.
+      const firstStatusRow = this.getPendingUserPromptElement() ?? this.getThinkingElement() ?? this.getInterruptedElement();
 
       for (const renderedId of [...this.renderedMessageFingerprints.keys()]) {
         if (currentIds.has(renderedId)) continue;
@@ -767,6 +808,12 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           if (this.renderedMessageFingerprints.get(message.id) !== fingerprint) {
             existingMessage.innerHTML = this.renderMessageInnerMarkup(message);
           }
+        } else if (firstStatusRow) {
+          firstStatusRow.insertAdjacentHTML("beforebegin", this.renderMessageMarkup(message));
+
+          const insertedMessage = firstStatusRow.previousElementSibling;
+
+          if (insertedMessage) messageElements.set(message.id, insertedMessage as HTMLElement);
         } else {
           messagesContainer.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
 

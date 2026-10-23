@@ -19,7 +19,8 @@ const sessionsPanelViewportRatio = 0.3 * 0.98;
 const sessionRowPaddingWidth = 3;
 const sessionPanelBorderWidth = 2;
 const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const thinkingSpinnerIntervalMs = 80;
+// Each frame re-lays out the whole screen, so a faster spinner starves key handling.
+const thinkingSpinnerIntervalMs = 150;
 
 /**
  * Registers the Sessions panel custom element against a TermDOM window.
