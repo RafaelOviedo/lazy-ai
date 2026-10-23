@@ -19,8 +19,10 @@ const sessionsPanelViewportRatio = 0.3 * 0.98;
 const sessionRowPaddingWidth = 3;
 const sessionPanelBorderWidth = 2;
 const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-// Each frame re-lays out the whole screen, so a faster spinner starves key handling.
-const thinkingSpinnerIntervalMs = 150;
+const thinkingSpinnerIntervalMs = 100;
+// Only the most recent sessions of a project are listed.
+const maxVisibleSessions = 10;
+const busyRunStatuses: SessionRunStatus[] = ["starting", "thinking", "awaitingApproval"];
 
 /**
  * Registers the Sessions panel custom element against a TermDOM window.
@@ -320,12 +322,18 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         const sessions = await sessionReader.listByProject(projectPath);
         if (loadVersion !== this.loadVersion) return;
         this.loadError = null;
-        this.sessions = sessions;
+        this.sessions = sessions.slice(0, maxVisibleSessions);
+        // An active session older than the newest few still has to be listed.
+        const activeSession = sessions.find((session) => session.id === this.activeSessionIdValue);
+        if (activeSession && !this.sessions.includes(activeSession)) {
+          this.sessions.unshift(activeSession);
+        }
         for (const session of this.liveSessions.values()) {
           if (isSameProjectPath(session.projectPath, projectPath) && !sessions.some((saved) => saved.id === session.id)) {
             this.sessions.unshift(session);
           }
         }
+        this.trimToVisibleSessions();
         this.selectedSessionIndex = 0;
         this.promoteActiveSession(false);
       } catch {
@@ -655,6 +663,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (existingSessionIndex === -1) {
         this.sessions.unshift(session);
+
+        for (const droppedSession of this.trimToVisibleSessions(selectedSessionId)) {
+          const droppedItem = this.getSessionItemElementById(droppedSession.id);
+
+          droppedItem?.parentNode?.removeChild(droppedItem);
+        }
       } else {
         this.sessions[existingSessionIndex] = session;
       }
@@ -854,6 +868,25 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         bubbles: true,
         detail,
       }));
+    }
+
+    /**
+     * Drops the oldest sessions past the visible limit, sparing the active, the
+     * selected, and any busy session, and returns what was dropped.
+     */
+    private trimToVisibleSessions(selectedSessionId: string | null = null): SessionSummary[] {
+      const dropped: SessionSummary[] = [];
+
+      for (let index = this.sessions.length - 1; index >= 0 && this.sessions.length > maxVisibleSessions; index -= 1) {
+        const session = this.sessions[index];
+        const isBusy = busyRunStatuses.includes(this.runStatuses.get(session.id) as SessionRunStatus);
+
+        if (session.id === this.activeSessionIdValue || session.id === selectedSessionId || isBusy) continue;
+
+        dropped.push(...this.sessions.splice(index, 1));
+      }
+
+      return dropped;
     }
 
     /**
