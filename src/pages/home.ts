@@ -1,11 +1,29 @@
 import type { ModelOption } from "../entities/ai-model/index.js";
 import type { UsageLimitSnapshot } from "../entities/provider/index.js";
 import type { SessionSummary } from "../entities/session/index.js";
-import { createProviderProfile, createUnavailableRuntimeClient, listProviderModels, resolveDefaultModel } from "../app/registry/index.js";
-import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from "../entities/provider/index.js";
+import {
+  createProviderProfile,
+  createUnavailableRuntimeClient,
+  listProviderModels,
+  resolveDefaultModel,
+} from "../app/registry/index.js";
+import {
+  getActiveProvider,
+  setActiveProvider,
+  subscribeActiveProvider,
+} from "../entities/provider/index.js";
 
-import { type SessionDeleteRequestDetail, type SessionResumeRequestDetail, type SessionSelectionChangeDetail, type SessionViewRequestDetail, type SessionsPanelElement } from "../components/SessionsPanel/types.js";
-import { type ProjectSelectionChangeDetail, type ProjectsPanelElement } from "../components/ProjectsPanel/types.js";
+import {
+  type SessionDeleteRequestDetail,
+  type SessionResumeRequestDetail,
+  type SessionSelectionChangeDetail,
+  type SessionViewRequestDetail,
+  type SessionsPanelElement,
+} from "../components/SessionsPanel/types.js";
+import {
+  type ProjectSelectionChangeDetail,
+  type ProjectsPanelElement,
+} from "../components/ProjectsPanel/types.js";
 import { type ContextPanelElement } from "../components/ContextPanel/types.js";
 import { type DetailsPanelElement } from "../components/DetailsPanel/types.js";
 import { type StatusPanelElement } from "../components/StatusPanel/types.js";
@@ -44,10 +62,15 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   const { closeModal, getModalConfig, openModal, subscribe: subscribeModal } = useModal();
   let activeProvider = getActiveProvider();
-  const providerProfile = createProviderProfile(activeProvider.providerId, activeProvider.modelId, activeProvider.effort ?? null);
+  const providerProfile = createProviderProfile(
+    activeProvider.providerId,
+    activeProvider.modelId,
+    activeProvider.effort ?? null,
+  );
   const sessionReader = providerProfile.sessions;
   const providerCapabilities = providerProfile.capabilities;
-  const appServerClient = providerProfile.client ?? createUnavailableRuntimeClient(providerProfile.label);
+  const appServerClient =
+    providerProfile.client ?? createUnavailableRuntimeClient(providerProfile.label);
   const unsubscribeActiveProvider = subscribeActiveProvider((next, previous) => {
     if (next.providerId !== previous.providerId || next.modelId !== previous.modelId) return;
     appServerClient.setEffort(next.effort ?? null);
@@ -84,7 +107,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         display: flex;
         flex-direction: column;
         position: relative;
-        border: 1px solid #5fafff;
+        /* border: 1px solid #5fafff; */
         padding: 0 1ch;
         height: 100vh;
         box-sizing: border-box;
@@ -153,7 +176,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const statusPanelElement = document.getElementById("status-panel");
   const keybindingsPanelElement = document.getElementById("keybindings-panel");
 
-  const panels = [panel1, panel2, panel3, detailsPanelElement].filter((panel): panel is HTMLElement => panel !== null);
+  const panels = [panel1, panel2, panel3, detailsPanelElement].filter(
+    (panel): panel is HTMLElement => panel !== null,
+  );
 
   const initialProjectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? projectPath;
   let selectedProjectPath = projectPath;
@@ -210,7 +235,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const toolApprovalController = createToolApprovalController({
     closeModal,
     isModalActive: () => getModalConfig().isActive,
-    openPermissionModal: (request: ToolPermissionRequest, queuedCount: number, onDecide: (decision: ToolPermissionDecision) => void) => {
+    openPermissionModal: (
+      request: ToolPermissionRequest,
+      queuedCount: number,
+      onDecide: (decision: ToolPermissionDecision) => void,
+    ) => {
       openModal(ModalName.toolPermissionModal, {
         onDecide,
         queuedCount,
@@ -232,7 +261,8 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
       // Activation follows an explicit start/resume, never turn completion.
       if (sessionId && !wasActive) {
-        const session = sessionsPanel?.getSession(sessionId) ?? sessionRunController.getState(sessionId)?.session;
+        const session =
+          sessionsPanel?.getSession(sessionId) ?? sessionRunController.getState(sessionId)?.session;
         if (session) viewSession(session);
       }
     },
@@ -299,14 +329,19 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   });
 
   appServerClient.setToolPermissionHandler?.((request) =>
-    sessionRunController.requestToolPermission(request, toolApprovalController.requestToolPermission));
+    sessionRunController.requestToolPermission(
+      request,
+      toolApprovalController.requestToolPermission,
+    ),
+  );
 
   appServerClient.setLiveConversationHandler?.((event) => {
     if (!isDisposed) detailsPanel?.applyLiveEvent(event);
   });
 
   function getPermissionSessionLabel(sessionId: string): string {
-    const session = sessionRunController.getState(sessionId)?.session ?? sessionsPanel?.getSession(sessionId);
+    const session =
+      sessionRunController.getState(sessionId)?.session ?? sessionsPanel?.getSession(sessionId);
     return session ? `${session.title} · ${session.projectPath}` : sessionId;
   }
 
@@ -329,7 +364,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
    * than calling the whole provider read-only when only some actions are missing.
    */
   function reportUnsupportedAction(action: string): void {
-    reportActionError(`${providerProfile.label} sessions cannot be ${action} from lazy-ai yet.`, "Not supported");
+    reportActionError(
+      `${providerProfile.label} sessions cannot be ${action} from lazy-ai yet.`,
+      "Not supported",
+    );
   }
 
   /**
@@ -396,10 +434,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     const liveState = selectedSession ? sessionRunController.getState(selectedSession.id) : null;
     const liveSession = liveState?.session;
     // Some providers don't persist effort; retain the level applied in this app.
-    contextPanel.selectedSession = selectedSession && liveSession?.effort !== undefined
-      && (liveState?.busy || liveSession.updatedAt >= selectedSession.updatedAt)
-      ? { ...selectedSession, effort: liveSession.effort }
-      : selectedSession;
+    contextPanel.selectedSession =
+      selectedSession &&
+        liveSession?.effort !== undefined &&
+        (liveState?.busy || liveSession.updatedAt >= selectedSession.updatedAt)
+        ? { ...selectedSession, effort: liveSession.effort }
+        : selectedSession;
   }
 
   function onProjectChange(event: Event) {
@@ -409,7 +449,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
     projectLoadError = customEvent.detail.error;
 
-    if (detailsPanel && !isSameProjectPath(selectedProjectPath, selectedProject?.path ?? projectPath)) {
+    if (
+      detailsPanel &&
+      !isSameProjectPath(selectedProjectPath, selectedProject?.path ?? projectPath)
+    ) {
       detailsPanel.viewedSession = null;
     }
 
@@ -524,14 +567,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
         const start = { navigation: ++navigationVersion, interruptRequested: false };
         pendingSessionStart = start;
         loadError = null;
-        void sessionRunController.startSession(prompt, selectedProjectPath, (session, threadId) => {
-          sessionResumeController.attachSession(session.id, threadId);
-          if (pendingSessionStart === start) pendingSessionStart = null;
-          if (start.interruptRequested) void sessionRunController.interruptSession(session.id);
-          if (start.navigation === navigationVersion) sessionResumeController.markSessionActive(session.id, threadId);
-        }).finally(() => {
-          if (pendingSessionStart === start) pendingSessionStart = null;
-        });
+        void sessionRunController
+          .startSession(prompt, selectedProjectPath, (session, threadId) => {
+            sessionResumeController.attachSession(session.id, threadId);
+            if (pendingSessionStart === start) pendingSessionStart = null;
+            if (start.interruptRequested) void sessionRunController.interruptSession(session.id);
+            if (start.navigation === navigationVersion)
+              sessionResumeController.markSessionActive(session.id, threadId);
+          })
+          .finally(() => {
+            if (pendingSessionStart === start) pendingSessionStart = null;
+          });
       },
     });
   }
@@ -545,30 +591,35 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     isModelPickerLoading = true;
 
     // Resolve the default before highlighting it, even if m is pressed during boot.
-    void Promise.all([listProviderModels(), refreshDefaultModelLabel()]).then(([groups]) => {
-      if (isModelSelectionBlocked() || getModalConfig().isActive) return;
+    void Promise.all([listProviderModels(), refreshDefaultModelLabel()])
+      .then(([groups]) => {
+        if (isModelSelectionBlocked() || getModalConfig().isActive) return;
 
-      openModal(ModalName.modelPickerModal, {
-        activeProvider: { ...activeProvider, modelId: activeProvider.modelId ?? defaultModelId },
-        groups,
-        onSelect: (model: ModelOption, effort: string | null) => {
-          if (isModelSelectionBlocked()) return;
-          closeModal();
-          const keepDefaultModel = activeProvider.modelId === null && model.providerId === activeProvider.providerId
-            && model.id === defaultModelId;
-          setActiveProvider({
-            modelId: keepDefaultModel ? null : model.id,
-            modelLabel: keepDefaultModel ? null : model.label,
-            providerId: model.providerId,
-            effort,
-          });
-        },
+        openModal(ModalName.modelPickerModal, {
+          activeProvider: { ...activeProvider, modelId: activeProvider.modelId ?? defaultModelId },
+          groups,
+          onSelect: (model: ModelOption, effort: string | null) => {
+            if (isModelSelectionBlocked()) return;
+            closeModal();
+            const keepDefaultModel =
+              activeProvider.modelId === null &&
+              model.providerId === activeProvider.providerId &&
+              model.id === defaultModelId;
+            setActiveProvider({
+              modelId: keepDefaultModel ? null : model.id,
+              modelLabel: keepDefaultModel ? null : model.label,
+              providerId: model.providerId,
+              effort,
+            });
+          },
+        });
+      })
+      .catch(() => {
+        if (!isDisposed) reportActionError("Failed to load provider models.");
+      })
+      .finally(() => {
+        isModelPickerLoading = false;
       });
-    }).catch(() => {
-      if (!isDisposed) reportActionError("Failed to load provider models.");
-    }).finally(() => {
-      isModelPickerLoading = false;
-    });
   }
 
   function openPromptSessionModal() {
@@ -590,9 +641,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       return;
     }
 
-    const activeSession = sessionsPanel?.getSession(activeSessionId)
-      ?? sessionRunController.getState(activeSessionId)?.session
-      ?? (selectedSession?.id === activeSessionId ? selectedSession : null);
+    const activeSession =
+      sessionsPanel?.getSession(activeSessionId) ??
+      sessionRunController.getState(activeSessionId)?.session ??
+      (selectedSession?.id === activeSessionId ? selectedSession : null);
 
     if (!activeSession) {
       openModal(ModalName.actionErrorModal, {
