@@ -6,6 +6,8 @@ import { ensureActionErrorModalDefined } from "./modules/ActionErrorModal/action
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureKeybindingsModalDefined } from "./modules/KeybindingsModal/keybindings-modal.js";
 import { ensureModelPickerModalDefined } from "./modules/ModelPickerModal/model-picker-modal.js";
+import { ensureModesModalDefined } from "./modules/ModesModal/modes-modal.js";
+import { ensureAgentQuestionsModalDefined } from "./modules/AgentQuestionsModal/agent-questions-modal.js";
 import { ensurePromptSessionModalDefined } from "./modules/PromptSessionModal/prompt-session-modal.js";
 import { ensureStartNewSessionModalDefined } from "./modules/StartNewSessionModal/start-new-session-modal.js";
 import { ensureToolPermissionModalDefined } from "./modules/ToolPermissionModal/tool-permission-modal.js";
@@ -18,6 +20,8 @@ const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
   [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
   [ModalName.keybindingsModal]: { tagName: "keybindings-modal", define: ensureKeybindingsModalDefined },
   [ModalName.modelPickerModal]: { tagName: "model-picker-modal", define: ensureModelPickerModalDefined },
+  [ModalName.modesModal]: { tagName: "modes-modal", define: ensureModesModalDefined },
+  [ModalName.agentQuestionsModal]: { tagName: "agent-questions-modal", define: ensureAgentQuestionsModalDefined },
   [ModalName.promptSessionModal]: { tagName: "prompt-session-modal", define: ensurePromptSessionModalDefined },
   [ModalName.startNewSessionModal]: { tagName: "start-new-session-modal", define: ensureStartNewSessionModalDefined },
   [ModalName.toolPermissionModal]: { tagName: "tool-permission-modal", define: ensureToolPermissionModalDefined },

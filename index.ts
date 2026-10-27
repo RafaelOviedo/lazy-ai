@@ -7,8 +7,10 @@ import { renderHome } from './src/pages/index.js';
 import { RoutesNames } from './src/pages/types.js';
 import { detectProviderStatuses, resolvePreferredProvider } from './src/app/registry/index.js';
 import { getActiveProvider, setActiveProvider, subscribeActiveProvider } from "./src/entities/provider/index.js";
+import { loadModePreference } from "./src/features/select-mode/mode-preference.js";
 
 const projectPath = await realpath(process.cwd()).catch(() => process.cwd());
+await loadModePreference();
 const term = new TermDOM();
 const { document, window } = term;
 

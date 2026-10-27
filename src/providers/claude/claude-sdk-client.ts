@@ -4,6 +4,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { SessionAlreadyRunningError } from "../../entities/provider/index.js";
 import { resolveExecutablePath } from "../../shared/lib/process/index.js";
 import { parseClaudeEffort } from "./claude-effort.js";
+import { claudePermissionMode, planFinishedMessage, type AgentMode, type ModeAvailability } from "../../entities/provider/model/agent-mode.js";
+import { parseClaudeQuestions } from "./claude-questions.js";
 
 import type {
   Options,
@@ -42,6 +44,7 @@ type SessionInputQueue = {
 };
 
 type LiveSession = {
+  mode: AgentMode;
   effort: EffortLevel | null;
   pumpPromise: Promise<void> | null;
   allowedToolsForSession: Set<string>;
@@ -89,6 +92,9 @@ let hasExecutableLaunchFailure = false;
  * a session id doubles as its thread id.
  */
 export class ClaudeSdkClient implements ProviderRuntimeClient {
+  private mode: AgentMode = "manual";
+  private modeUnavailable: ModeAvailability = {};
+  private modeNoticeHandler: ((message: string) => void) | null = null;
   private readonly model: string | null;
   private effort: EffortLevel | null;
   private readonly canResumeSession: ClaudeSdkClientOptions["canResumeSession"];
@@ -110,6 +116,31 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   setEffort(effort: string | null): void {
     this.effort = parseClaudeEffort(effort);
+  }
+
+  async setMode(mode: AgentMode): Promise<void> {
+    if (this.mode === mode) return;
+    if ([...this.sessions.values()].some((session) => session.orderedTurnIds.length)) {
+      throw new Error("Wait for all responses to finish before changing mode.");
+    }
+    // Closing the query clears provider-side session grants as well as our memo.
+    // Transcripts remain available and are resumed with the new policy.
+    for (const session of this.sessions.values()) {
+      if (session.query) {
+        session.input?.end();
+        await session.query.return(undefined);
+        await session.pumpPromise;
+      }
+      session.allowedToolsForSession.clear();
+      session.startFailure = null;
+    }
+    this.mode = mode;
+  }
+
+  async getModeAvailability(): Promise<ModeAvailability> { return { ...this.modeUnavailable }; }
+
+  setModeNoticeHandler(handler: ((message: string) => void) | null): void {
+    this.modeNoticeHandler = handler;
   }
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
@@ -210,6 +241,17 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       this.beginQuery(session);
     }
 
+    // A rejected Auto selection must not quietly run a Manual turn instead.
+    try {
+      await session.query!.setPermissionMode(claudePermissionMode(this.mode));
+      session.mode = this.mode;
+    } catch (error) {
+      const message = `Claude Code could not activate ${this.mode}: ${error instanceof Error ? error.message : String(error)}`;
+      if (this.mode === "auto") this.modeUnavailable.auto = message;
+      this.modeNoticeHandler?.(message);
+      throw new Error(message);
+    }
+
     const turnId = `${session.sessionId}:${session.nextTurnIndex}`;
     session.nextTurnIndex += 1;
     session.orderedTurnIds.push(turnId);
@@ -293,6 +335,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   private createSessionRecord(sessionId: string, cwd: string | undefined, isResumed: boolean): LiveSession {
     return {
+      mode: this.mode,
       effort: this.effort,
       pumpPromise: null,
       allowedToolsForSession: new Set<string>(),
@@ -317,6 +360,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     const input = createSessionInputQueue();
 
     session.input = input;
+    session.mode = this.mode;
     session.effort = this.effort;
     session.query = this.createQuery({
       prompt: input.iterable,
@@ -332,9 +376,21 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       canUseTool: (toolName, toolInput, toolOptions) => {
         return this.resolveToolPermission(session, toolName, toolInput, toolOptions);
       },
-      // `default` is what makes Claude Code ask at all; a looser mode would skip
-      // the approval modal entirely.
-      permissionMode: "default",
+      permissionMode: claudePermissionMode(session.mode),
+      ...(session.mode === "plan" ? { planModeInstructions: "Explore using read-only tools and return the complete plan directly in your final response. Do not edit source files. The user reviews the plan and selects an implementation mode in Lazy AI before sending another prompt." } : {}),
+      // Let the host surface questions and enforce a deliberate exit from Plan.
+      hooks: {
+        PreToolUse: [{ hooks: [async (input) => {
+          if (input.hook_event_name !== "PreToolUse") return {};
+          if (input.tool_name === "ExitPlanMode") {
+            return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: planFinishedMessage } };
+          }
+          if (input.tool_name === "EnterPlanMode" || input.tool_name === "AskUserQuestion") {
+            return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask" } };
+          }
+          return {};
+        }] }],
+      },
       // Without this the SDK only yields whole messages, so nothing is shown
       // until a block is finished.
       includePartialMessages: true,
@@ -363,6 +419,14 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       const stream = { text: "" };
 
       for await (const message of sessionQuery as AsyncIterable<SDKMessage>) {
+        if (message.type === "system" && "permissionMode" in message && message.permissionMode
+          && message.permissionMode !== claudePermissionMode(session.mode)) {
+          const notice = `Claude Code reports ${message.permissionMode} instead of ${session.mode}. Select a supported mode with f before continuing.`;
+          this.modeNoticeHandler?.(notice);
+          if (session.mode === "auto") this.modeUnavailable.auto = notice;
+          // Do not continue generating with a mode different from the user's choice.
+          void sessionQuery.interrupt().catch(() => undefined);
+        }
         if (message.type === "result") {
           stream.text = "";
           this.recordTurnCompletion(session, message);
@@ -567,6 +631,27 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       title?: string;
     },
   ): Promise<PermissionResult> {
+    if (toolName === "ExitPlanMode") return { behavior: "deny", message: planFinishedMessage };
+    if (toolName === "EnterPlanMode") return { behavior: "deny", message: "Ask the user to select Plan with f in Lazy AI after this turn finishes." };
+    if (toolName === "AskUserQuestion") {
+      const questions = parseClaudeQuestions(toolInput.questions);
+      if (!questions.length || !this.toolPermissionHandler || toolOptions.signal.aborted) {
+        return { behavior: "deny", message: "No answer available. Ask the user in your response." };
+      }
+      const decision = await this.toolPermissionHandler({
+        questions, signal: toolOptions.signal, sessionId: session.sessionId,
+        allowsSessionScope: false, defaultsToDeny: true, detail: null, displayName: "Answer questions",
+        path: null, title: "Claude Code needs your input", toolName,
+      });
+      if (decision.behavior !== "allow" || !decision.answers) return { behavior: "deny", message: deniedByUserMessage };
+      const answers = Object.fromEntries(questions.map((question) => [question.question, (decision.answers![question.id] ?? []).join(", ")]));
+      return { behavior: "allow", updatedInput: { ...toolInput, answers } };
+    }
+    // Plan-mode writes fall through to canUseTool even with old allow rules.
+    // Never let an earlier session grant or the approval modal authorize them.
+    if (session.mode === "plan") {
+      return { behavior: "deny", message: "This action requires permission and is unavailable in Plan. Continue with read-only exploration and present a plan." };
+    }
     if (session.allowedToolsForSession.has(toolName)) {
       return { behavior: "allow", updatedInput: toolInput };
     }
@@ -585,6 +670,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
     try {
       const decision = await handler({
+        signal: toolOptions.signal,
         allowsSessionScope,
         defaultsToDeny: toolOptions.defaultToNo === true,
         detail: toolOptions.description ?? toolOptions.decisionReason ?? null,

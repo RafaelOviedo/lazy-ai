@@ -28,8 +28,7 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
     /**
      * Cleans up delegated event handling.
      */
-    disconnectedCallback(): void {
-    }
+    disconnectedCallback(): void { }
 
     /**
      * Updates the modal payload.
@@ -69,9 +68,11 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
      * Re-renders the modal content and modal-owned dimensions.
      */
     private render(): void {
-      const title = this.payloadValue?.title ?? "Keybindings"
+      const title = this.payloadValue?.title ?? "Keybindings";
 
-      renderWithStableStyle(this, `
+      renderWithStableStyle(
+        this,
+        `
         <style>
           keybindings-modal {
             display: flex;
@@ -140,11 +141,13 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
           <span class="keybindings-modal__key"><span style="color: #fff;">i</span> Interrupt response</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">d</span> Delete session (Codex only)</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">m</span> Providers and models</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">f</span> Agent modes</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">w</span> View conversation (Sessions panel)</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">q</span> Quit</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">?</span> Keybindings</span>
         </div>
-      `);
+      `,
+      );
     }
   }
 

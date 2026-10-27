@@ -3,6 +3,8 @@ export enum ModalName {
   confirmDeleteSessionModal = "ConfirmDeleteSessionModal",
   keybindingsModal = "KeybindingsModal",
   modelPickerModal = "ModelPickerModal",
+  modesModal = "ModesModal",
+  agentQuestionsModal = "AgentQuestionsModal",
   promptSessionModal = "PromptSessionModal",
   startNewSessionModal = "StartNewSessionModal",
   toolPermissionModal = "ToolPermissionModal",

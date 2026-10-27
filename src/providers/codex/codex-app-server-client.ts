@@ -3,6 +3,8 @@ import { createInterface, type Interface as ReadlineInterface } from "node:readl
 
 import { SessionAlreadyRunningError } from "../../entities/provider/index.js";
 import { requiresShellToSpawn, resolveExecutablePath } from "../../shared/lib/process/index.js";
+import { agentModes, codexModePolicy, type AgentMode, type ModeAvailability } from "../../entities/provider/model/agent-mode.js";
+import type { AgentQuestion } from "../../entities/provider/types.js";
 
 import type {
   ToolPermissionDecision,
@@ -109,6 +111,9 @@ export type CodexAppServerTurnCompletionResult = {
 };
 
 type ThreadResumeResponse = {
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
+  sandbox?: { type?: string };
   reasoningEffort?: string | null;
   model?: string;
   thread?: {
@@ -118,6 +123,9 @@ type ThreadResumeResponse = {
 };
 
 type ThreadStartResponse = {
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
+  sandbox?: { type?: string };
   reasoningEffort?: string | null;
   model?: string;
   thread?: {
@@ -143,18 +151,18 @@ type TurnCompletedNotification = {
   };
 };
 
-/**
- * Mirrors the Claude Code client pinning `permissionMode: "default"`: the
- * in-terminal approval modal is the point of lazy-ai, so Codex is asked to route
- * escalations here rather than follow whatever the local config would have done.
- */
-const approvalPolicy = "on-request";
 const jsonRpcMethodNotFoundCode = -32601;
 // File-change items are announced far more often than they are asked about, so
 // the path cache is trimmed rather than left to grow for the whole process.
 const fileChangeItemCacheLimit = 200;
 
 export class CodexAppServerClient {
+  private isDisposed = false;
+  private mode: AgentMode = "manual";
+  private loadedThreads = new Set<string>();
+  private threadModes = new Map<string, AgentMode>();
+  private runningThreads = new Set<string>();
+  private modeNoticeHandler: ((message: string) => void) | null = null;
   private readonly model: string | null;
   private effort: string | null;
   private readonly threadEfforts = new Map<string, {
@@ -184,6 +192,73 @@ export class CodexAppServerClient {
     this.effort = effort;
   }
 
+  async setMode(mode: AgentMode): Promise<void> {
+    if (this.isDisposed) throw new Error("Codex client disposed.");
+    if (this.mode === mode) return;
+    if (this.runningThreads.size || this.pendingTurnCompletions.size || this.pendingServerRequests.size) {
+      throw new Error("Wait for all responses to finish before changing mode.");
+    }
+    // Restart the owned server to discard in-memory session grants. Idle
+    // conversations are reattached lazily, preserving their history and effort.
+    const child = this.process;
+    if (child && child.exitCode === null) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Codex did not stop; mode was not changed.")), 5000);
+        child.once("exit", () => { clearTimeout(timer); resolve(); });
+        child.kill();
+      });
+    }
+    this.loadedThreads.clear();
+    this.threadModes.clear();
+    this.completedTurns = [];
+    this.mode = mode;
+  }
+
+  setModeNoticeHandler(handler: ((message: string) => void) | null): void { this.modeNoticeHandler = handler; }
+
+  async getModeAvailability(): Promise<ModeAvailability> {
+    await this.initialize();
+    const [config, presets, managed] = await Promise.all([
+      this.request<{ config: Record<string, unknown> }>("config/read", {}),
+      this.request<{ data: { mode: string }[] }>("collaborationMode/list", {}).catch(() => ({ data: [] })),
+      this.request<{ requirements: { allowedApprovalPolicies?: string[]; allowedApprovalsReviewers?: string[]; allowedSandboxModes?: string[] } | null }>("configRequirements/read", {}).catch(() => ({ requirements: null })),
+    ]);
+    const unavailable: ModeAvailability = {};
+    for (const mode of agentModes) {
+      const policy = codexModePolicy(mode, process.cwd());
+      const requirements = managed.requirements;
+      if (requirements?.allowedApprovalPolicies && !requirements.allowedApprovalPolicies.includes(policy.approvalPolicy)
+        || requirements?.allowedApprovalsReviewers && !requirements.allowedApprovalsReviewers.includes(policy.approvalsReviewer)
+        || requirements?.allowedSandboxModes && !requirements.allowedSandboxModes.includes(policy.sandbox)) {
+        unavailable[mode] = "This mode is restricted by your Codex organization policy.";
+      }
+    }
+    if (!("approvals_reviewer" in config.config)) {
+      for (const mode of agentModes) {
+        unavailable[mode] ??= "Update Codex to a version with explicit approval reviewer support (verified with 0.157.0).";
+      }
+    }
+    if (!presets.data.some((preset) => preset.mode === "plan")) unavailable.plan = "This Codex version does not expose Plan mode.";
+    return unavailable;
+  }
+
+  private threadPolicy() {
+    const { approvalPolicy, approvalsReviewer, sandbox } = codexModePolicy(this.mode, process.cwd());
+    return { approvalPolicy, approvalsReviewer, sandbox };
+  }
+
+  private verifyThreadPolicy(threadId: string, result: ThreadStartResponse): void {
+    const expected = codexModePolicy(this.mode, process.cwd());
+    if (result.approvalPolicy !== expected.approvalPolicy || result.sandbox?.type !== expected.sandboxPolicy.type
+      || result.approvalsReviewer !== expected.approvalsReviewer) {
+      const message = `Codex did not accept ${this.mode} mode. Update Codex or select a mode permitted by your configuration; no prompt was sent.`;
+      this.modeNoticeHandler?.(message);
+      throw new Error(message);
+    }
+    this.loadedThreads.add(threadId);
+    this.threadModes.set(threadId, this.mode);
+  }
+
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
     this.toolPermissionHandler = handler;
   }
@@ -194,12 +269,13 @@ export class CodexAppServerClient {
     const result = await this.request<ThreadResumeResponse>("thread/resume", {
       threadId,
       cwd,
-      approvalPolicy,
+      ...this.threadPolicy(),
       serviceName: "lazy-ai",
       ...(this.model ? { model: this.model } : {}),
     });
 
     const resumedId = result.thread?.id ?? result.thread?.sessionId ?? threadId;
+    this.verifyThreadPolicy(resumedId, result);
     this.rememberThreadEffort(resumedId, result);
     return {
       threadId: resumedId,
@@ -223,7 +299,7 @@ export class CodexAppServerClient {
 
     const result = await this.request<ThreadStartResponse>("thread/start", {
       cwd,
-      approvalPolicy,
+      ...this.threadPolicy(),
       historyMode: "legacy",
       serviceName: "lazy-ai",
       // Omitted entirely when unset so Codex applies its own configured default.
@@ -236,6 +312,8 @@ export class CodexAppServerClient {
       throw new Error("Codex app-server did not return a thread id.");
     }
 
+    this.verifyThreadPolicy(threadId, result);
+
     this.rememberThreadEffort(threadId, result);
     return {
       threadId,
@@ -245,6 +323,8 @@ export class CodexAppServerClient {
 
   async startTurn(threadId: string, prompt: string, cwd?: string): Promise<CodexAppServerTurnStartResult> {
     await this.initialize();
+
+    if (!this.loadedThreads.has(threadId)) await this.resumeThread(threadId, cwd);
 
     const effort = this.effort;
     const threadEffort = this.threadEfforts.get(threadId);
@@ -268,6 +348,10 @@ export class CodexAppServerClient {
       if (!threadEffort.defaultEffort) throw new Error("Codex did not report a default thinking level for this model.");
     }
     const turnEffort = effort ?? (threadEffort?.overridden ? threadEffort.defaultEffort : null);
+    const model = this.model ?? threadEffort?.model;
+    if (!model) throw new Error("Codex did not report the model needed to configure this turn.");
+    const { approvalPolicy, approvalsReviewer, sandboxPolicy } = codexModePolicy(this.mode, cwd ?? process.cwd());
+    this.runningThreads.add(threadId);
     const result = await this.request<TurnStartResponse>("turn/start", {
       threadId,
       input: [{
@@ -276,13 +360,21 @@ export class CodexAppServerClient {
         text_elements: [],
       }],
       cwd,
+      approvalPolicy,
+      approvalsReviewer,
+      sandboxPolicy,
+      collaborationMode: {
+        mode: this.mode === "plan" ? "plan" : "default",
+        settings: { model, reasoning_effort: turnEffort ?? threadEffort?.defaultEffort ?? null, developer_instructions: null },
+      },
       ...(this.model ? { model: this.model } : {}),
       ...(turnEffort ? { effort: turnEffort } : {}),
-    });
+    }).catch((error: unknown) => { this.runningThreads.delete(threadId); throw error; });
 
     const turnId = result.turn?.id;
 
     if (!turnId) {
+      this.runningThreads.delete(threadId);
       throw new Error("Codex app-server did not return a turn id.");
     }
 
@@ -331,6 +423,7 @@ export class CodexAppServerClient {
   }
 
   dispose(): void {
+    this.isDisposed = true;
     this.threadEfforts.clear();
     // Answered before the process goes away so Codex is never left waiting on a
     // prompt nothing can show any more.
@@ -350,9 +443,12 @@ export class CodexAppServerClient {
 
     this.process = null;
     this.initializePromise = null;
+    this.loadedThreads.clear();
+    this.runningThreads.clear();
   }
 
   private initialize(): Promise<void> {
+    if (this.isDisposed) return Promise.reject(new Error("Codex client disposed."));
     if (!this.initializePromise) {
       this.initializePromise = this.initializeProcess().catch((error: unknown) => {
         this.initializePromise = null;
@@ -390,6 +486,7 @@ export class CodexAppServerClient {
     // which CreateProcess cannot launch, so those have to go via the shell.
     // Falling back to the bare name lets the OS resolve it if PATH lookup missed.
     const executable = await resolveExecutablePath("codex") ?? "codex";
+    if (this.isDisposed) throw new Error("Codex client disposed.");
     const useShell = requiresShellToSpawn(executable);
     const command = useShell ? `"${executable}"` : executable;
 
@@ -516,6 +613,7 @@ export class CodexAppServerClient {
     const completion = this.readTurnCompletedNotification(notification.params);
 
     if (!completion) return;
+    this.runningThreads.delete(completion.threadId);
 
     this.completedTurns.push(completion);
     this.completedTurns = this.completedTurns.slice(-20);
@@ -550,7 +648,7 @@ export class CodexAppServerClient {
         this.respond(requestId, { permissions: {}, scope: "turn" });
         return;
       case "item/tool/requestUserInput":
-        this.respond(requestId, { answers: {} });
+        void this.resolveUserInput(requestId, params);
         return;
       case "mcpServer/elicitation/request":
         this.respond(requestId, { _meta: null, action: "decline", content: null });
@@ -573,7 +671,7 @@ export class CodexAppServerClient {
   ): Promise<void> {
     const pendingServerRequest = this.registerServerRequest(requestId, { decision: "decline" });
 
-    if (!params) {
+    if (!params || this.threadModes.get(params.threadId ?? "") === "plan") {
       pendingServerRequest.decline();
       return;
     }
@@ -608,7 +706,7 @@ export class CodexAppServerClient {
   ): Promise<void> {
     const pendingServerRequest = this.registerServerRequest(requestId, { decision: "decline" });
 
-    if (!params) {
+    if (!params || this.threadModes.get(params.threadId ?? "") === "plan") {
       pendingServerRequest.decline();
       return;
     }
@@ -652,11 +750,31 @@ export class CodexAppServerClient {
     }
   }
 
+  private async resolveUserInput(requestId: number | string, params: unknown): Promise<void> {
+    const controller = new AbortController();
+    const pending = this.registerServerRequest(requestId, { answers: {} }, () => controller.abort());
+    const input = params as { threadId?: string; questions?: AgentQuestion[] } | undefined;
+    if (!input?.threadId || !Array.isArray(input.questions) || !input.questions.length) {
+      pending.decline();
+      return;
+    }
+    const questions = input.questions.map((question) => ({ ...question,
+      options: question.options ?? [], allowOther: (question as AgentQuestion & { isOther?: boolean }).isOther !== false,
+    }));
+    const decision = await this.askForToolPermission({
+      questions, signal: controller.signal, sessionId: input.threadId,
+      allowsSessionScope: false, defaultsToDeny: true, detail: null, displayName: "Answer questions",
+      path: null, title: "Codex needs your input", toolName: "request_user_input",
+    });
+    pending.respond({ answers: decision?.behavior === "allow" && decision.answers
+      ? Object.fromEntries(Object.entries(decision.answers).map(([id, answers]) => [id, { answers }])) : {} });
+  }
+
   /**
    * Tracks the request so it can still be settled if Codex resolves it
    * elsewhere, or if this client is torn down while the prompt is open.
    */
-  private registerServerRequest(requestId: number | string, declineResult: unknown): PendingServerRequest {
+  private registerServerRequest(requestId: number | string, declineResult: unknown, onSettled?: () => void): PendingServerRequest {
     const key = String(requestId);
     let isSettled = false;
 
@@ -665,6 +783,7 @@ export class CodexAppServerClient {
 
       isSettled = true;
       this.pendingServerRequests.delete(key);
+      onSettled?.();
 
       if (shouldRespond) {
         this.respond(requestId, result);
@@ -805,21 +924,25 @@ export class CodexAppServerClient {
   }
 
   private handleProcessError(error: Error): void {
+    this.loadedThreads.clear();
+    this.runningThreads.clear();
     this.rejectPendingRequests(new Error(`Codex app-server failed to start: ${error.message}`));
     this.rejectPendingTurnCompletions(new Error(`Codex app-server failed to start: ${error.message}`));
     // Left unanswered: there is no process to answer to any more.
-    this.pendingServerRequests.clear();
+    for (const request of [...this.pendingServerRequests.values()]) request.discard();
     this.initializePromise = null;
     this.process = null;
   }
 
   private handleProcessExit(code: number | null, signal: NodeJS.Signals | null): void {
+    this.loadedThreads.clear();
+    this.runningThreads.clear();
     const stderr = this.stderrLines.length > 0 ? ` ${this.stderrLines.join(" ")}` : "";
     const reason = signal ? `signal ${signal}` : `code ${code ?? "unknown"}`;
 
     this.rejectPendingRequests(new Error(`Codex app-server exited with ${reason}.${stderr}`));
     this.rejectPendingTurnCompletions(new Error(`Codex app-server exited with ${reason}.${stderr}`));
-    this.pendingServerRequests.clear();
+    for (const request of [...this.pendingServerRequests.values()]) request.discard();
     this.initializePromise = null;
     this.process = null;
     this.stdoutReader = null;

@@ -41,20 +41,31 @@ export function createToolApprovalController(options: ToolApprovalControllerOpti
 
   function requestToolPermission(request: ToolPermissionRequest): Promise<ToolPermissionDecision> {
     // Nothing can answer after teardown, so deny rather than leave a turn hanging.
-    if (isDisposed) return Promise.resolve(deniedDecision);
+    if (isDisposed || request.signal?.aborted) return Promise.resolve(deniedDecision);
 
     return new Promise<ToolPermissionDecision>((resolve) => {
       let hasSettled = false;
 
-      queue.push({
+      const queued: QueuedPermissionRequest = {
         request,
         settle: (decision) => {
           if (hasSettled) return;
 
           hasSettled = true;
+          request.signal?.removeEventListener("abort", abort);
           resolve(decision);
         },
-      });
+      };
+      const abort = () => {
+        if (activeRequest === queued) settleActiveRequest(deniedDecision);
+        else {
+          const index = queue.indexOf(queued);
+          if (index !== -1) queue.splice(index, 1);
+          queued.settle(deniedDecision);
+        }
+      };
+      queue.push(queued);
+      request.signal?.addEventListener("abort", abort, { once: true });
 
       presentNextRequest();
     });

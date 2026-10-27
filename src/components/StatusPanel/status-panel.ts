@@ -17,6 +17,12 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
    * Renders the current project/session status.
    */
   class StatusPanel extends window.HTMLElement {
+    private activeModeLabelValue = "Manual";
+    set activeModeLabel(value: string) {
+      if (this.activeModeLabelValue === value) return;
+      this.activeModeLabelValue = value;
+      if (this.isConnected) this.render();
+    }
     private activeProviderLabelValue = "";
     private activeModelLabelValue: string | null = null;
     private activeModelIsDefaultValue = false;
@@ -237,13 +243,13 @@ export function ensureStatusPanelDefined(window: TermWindow): void {
       if (!providerLabel) return "";
 
       if (!this.activeModelLabelValue) {
-        return `${escapeHtml(providerLabel)} · `;
+        return `${escapeHtml(`${providerLabel} · mode: ${this.activeModeLabelValue}`)} · `;
       }
 
       const defaultSuffix = this.activeModelIsDefaultValue ? " (default)" : "";
 
       const effort = this.activeEffortValue ?? "default";
-      return `${escapeHtml(`${providerLabel} · ${this.activeModelLabelValue}${defaultSuffix} · thinking: ${effort}`)} · `;
+      return `${escapeHtml(`${providerLabel} · ${this.activeModelLabelValue}${defaultSuffix} · thinking: ${effort} · mode: ${this.activeModeLabelValue}`)} · `;
     }
 
     /**

@@ -10,6 +10,8 @@ export function createUnavailableRuntimeClient(providerLabel: string): ProviderR
   };
 
   return {
+    setMode: async () => {},
+    getModeAvailability: async () => ({ manual: "Provider unavailable", acceptEdits: "Provider unavailable", auto: "Provider unavailable", plan: "Provider unavailable" }),
     setEffort: unavailable,
     deleteThread: unavailable,
     dispose: () => { },

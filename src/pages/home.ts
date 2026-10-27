@@ -1,4 +1,6 @@
 import type { ModelOption } from "../entities/ai-model/index.js";
+import { modeLabels, type AgentMode, type ModeAvailability } from "../entities/provider/model/agent-mode.js";
+import { modePreference, modePreferenceLoadError } from "../features/select-mode/mode-preference.js";
 import type { UsageLimitSnapshot } from "../entities/provider/index.js";
 import type { SessionSummary } from "../entities/session/index.js";
 import {
@@ -193,6 +195,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   let defaultModelId: string | null = null;
   let isModelPickerLoading = false;
   let isDisposed = false;
+  let activeMode = modePreference.get();
+  let modeReady = false;
+  let modeError: string | null = null;
+  let modeUnavailable: ModeAvailability = {};
+  let isModesLoading = false;
+  let modeInitialization: Promise<void>;
   const pendingActionErrors: { message: string; title: string }[] = [];
   let navigationVersion = 0;
   let pendingSessionStart: { navigation: number; interruptRequested: boolean } | null = null;
@@ -240,7 +248,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       queuedCount: number,
       onDecide: (decision: ToolPermissionDecision) => void,
     ) => {
-      openModal(ModalName.toolPermissionModal, {
+      openModal(request.questions ? ModalName.agentQuestionsModal : ModalName.toolPermissionModal, {
         onDecide,
         queuedCount,
         request,
@@ -339,6 +347,53 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!isDisposed) detailsPanel?.applyLiveEvent(event);
   });
 
+  appServerClient.setModeNoticeHandler?.((message) => {
+    if (isDisposed) return;
+    modeError = message;
+    syncStatusPanel();
+    reportActionError(message, "Mode unavailable");
+  });
+
+  function canPromptInMode(): boolean {
+    if (!modeReady || modeError) {
+      reportActionError(modeError ?? "Agent mode is still loading. Try again in a moment.", "Mode unavailable");
+      return false;
+    }
+    return true;
+  }
+
+  async function openModesModal(): Promise<void> {
+    if (isDisposed || isModesLoading) return;
+    isModesLoading = true;
+    try {
+      await modeInitialization;
+      modeUnavailable = await appServerClient.getModeAvailability();
+      if (isDisposed || getModalConfig().isActive) return;
+      openModal(ModalName.modesModal, {
+        mode: activeMode,
+        providerId: providerProfile.id,
+        unavailable: modeUnavailable,
+        blockedReason: hasOngoingTurn() ? "Wait for all responses and approval requests to finish before changing mode." : undefined,
+        onSelect: async (mode: AgentMode) => {
+          if (isDisposed || hasOngoingTurn()) throw new Error("Wait for all responses to finish before changing mode.");
+          const previous = activeMode;
+          await appServerClient.setMode(mode);
+          try { await modePreference.save(mode); }
+          catch (error) {
+            await appServerClient.setMode(previous);
+            throw new Error(`Could not save the mode preference: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          activeMode = mode;
+          modeReady = true;
+          modeError = null;
+          syncStatusPanel();
+        },
+      });
+    } catch (error) {
+      reportActionError(error instanceof Error ? error.message : "Could not load modes.", "Modes unavailable");
+    } finally { isModesLoading = false; }
+  }
+
   function getPermissionSessionLabel(sessionId: string): string {
     const session =
       sessionRunController.getState(sessionId)?.session ?? sessionsPanel?.getSession(sessionId);
@@ -420,6 +475,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     statusPanel.activeModelLabel = activeProvider.modelLabel ?? defaultModelLabel;
     statusPanel.activeModelIsDefault = !activeProvider.modelId;
     statusPanel.activeEffort = activeProvider.effort ?? null;
+    statusPanel.activeModeLabel = `${modeLabels[activeMode]}${modeError ? " (unavailable)" : !modeReady ? " (loading)" : ""}`;
     statusPanel.projectLoadError = projectLoadError;
     statusPanel.loadError = loadError;
     statusPanel.selectedSession = selectedSession;
@@ -556,6 +612,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openStartNewSessionModal() {
+    if (!canPromptInMode()) return;
     if (!providerCapabilities.startSessions) {
       reportUnsupportedAction("started");
       return;
@@ -583,7 +640,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function isModelSelectionBlocked(): boolean {
-    return isDisposed || hasOngoingTurn();
+    return isDisposed || !modeReady || hasOngoingTurn();
   }
 
   function openModelPickerModal() {
@@ -623,6 +680,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function openPromptSessionModal() {
+    if (!canPromptInMode()) return;
     if (!providerCapabilities.promptSessions) {
       reportUnsupportedAction("prompted");
       return;
@@ -675,6 +733,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (getModalConfig().isActive) return;
     if (handleModalShortcuts(event, key)) return;
     if (handleModelPickerShortcut(event, key)) return;
+    if (isPlainKeyEvent(event) && key === Keybindings.F) {
+      event.preventDefault();
+      void openModesModal();
+      return;
+    }
     if (handleInterruptSessionShortcut(event, key)) return;
     if (handleNewSessionShortcut(event, key)) return;
     if (handlePromptSessionShortcut(event, key)) return;
@@ -766,7 +829,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   }
 
   function hasOngoingTurn(): boolean {
-    return sessionRunController.hasOngoingTurn();
+    return sessionRunController.hasOngoingTurn() || sessionResumeController.hasPendingResumes();
   }
 
   document.addEventListener("keydown", onKeyDown);
@@ -805,6 +868,22 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   void refreshDefaultModelLabel();
   void usageLimitController.refresh();
 
+  modeInitialization = appServerClient.setMode(activeMode).then(() => appServerClient.getModeAvailability()).then((unavailable) => {
+    if (isDisposed) return;
+    modeUnavailable = unavailable;
+    modeError = unavailable[activeMode] ?? null;
+    modeReady = true;
+    syncStatusPanel();
+    if (modeError) reportActionError(modeError, "Mode unavailable");
+    if (modePreferenceLoadError) reportActionError(modePreferenceLoadError, "Settings unavailable");
+  }).catch((error: unknown) => {
+    if (isDisposed) return;
+    modeReady = true;
+    modeError = error instanceof Error ? error.message : String(error);
+    syncStatusPanel();
+    reportActionError(modeError, "Modes unavailable");
+  });
+
   syncStatusPanel();
 
   return () => {
@@ -816,6 +895,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     sessionResumeController.dispose();
     // Detached before disposal so no in-flight request reaches a dead modal.
     appServerClient.setToolPermissionHandler?.(null);
+    appServerClient.setModeNoticeHandler?.(null);
     toolApprovalController.dispose();
     unsubscribeModal();
     appServerClient.dispose();

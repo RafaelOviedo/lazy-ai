@@ -1,5 +1,16 @@
 import type { ProjectReader } from "../project";
 import type { ConversationMessage, SessionReader } from "../session";
+import type { AgentMode, ModeAvailability } from "./model/agent-mode.js";
+
+export type AgentQuestion = {
+  id: string;
+  header: string;
+  question: string;
+  options: { label: string; description: string }[];
+  multiSelect?: boolean;
+  allowOther?: boolean;
+  isSecret?: boolean;
+};
 
 export type ProviderId = "claude-code" | "codex";
 
@@ -7,6 +18,8 @@ export type ProviderId = "claude-code" | "codex";
  * One tool call a provider is asking permission to run.
  */
 export type ToolPermissionRequest = {
+  questions?: AgentQuestion[];
+  signal?: AbortSignal;
   /**
    * False when the provider says this call must not offer a persistent
    * "don't ask again" choice, because the rule it would write grants more than
@@ -35,7 +48,7 @@ export type ToolPermissionRequest = {
  * stops the provider asking again for that tool for the rest of the session.
  */
 export type ToolPermissionDecision =
-  | { behavior: "allow"; scope: "once" | "session" }
+  | { behavior: "allow"; scope: "once" | "session"; answers?: Record<string, string[]> }
   | { behavior: "deny" };
 
 export type ToolPermissionHandler = (request: ToolPermissionRequest) => Promise<ToolPermissionDecision>;
@@ -68,6 +81,9 @@ export type ProviderCapabilities = {
  * Drives live turns for one provider. Null on a provider that can only be read.
  */
 export interface ProviderRuntimeClient {
+  setMode(mode: AgentMode): Promise<void>;
+  getModeAvailability(): Promise<ModeAvailability>;
+  setModeNoticeHandler?(handler: ((message: string) => void) | null): void;
   /** Selects the effort for future turns; null restores provider defaults. */
   setEffort(effort: string | null): void;
   deleteThread(threadId: string): Promise<unknown>;

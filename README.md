@@ -39,7 +39,7 @@ Potential additions to LazyAI. This list captures ideas for future development; 
 5. **Per-session model selection** — Use different providers and models in different sessions simultaneously.
 6. **Session search and filters** — Search titles and conversations; filter by project, provider, status, or date.
 7. **Session organization** — Pin, rename, tag, and archive sessions.
-8. **Agent-question dialogs** — Answer agents' multiple-choice and free-text questions inside LazyAI.
+8. **Richer agent dialogs** — Extend the existing question dialogs to more provider interactions, including MCP elicitation.
 9. **Attention queue** — Jump to sessions waiting for approval, an answer, or review.
 10. **Notifications** — Get notified when a session finishes, fails, or needs input.
 11. **Live tool activity** — See commands, file edits, tool results, and errors as they happen.
@@ -77,6 +77,7 @@ Potential additions to LazyAI. This list captures ideas for future development; 
   - [Browse Projects and Sessions](#browse-projects-and-sessions)
   - [Resume and Prompt Sessions](#resume-and-prompt-sessions)
   - [Switch Providers and Models](#switch-providers-and-models)
+  - [Select an Agent Mode](#select-an-agent-mode)
   - [Approve Codex or Claude Code Tools](#approve-codex-or-claude-code-tools)
   - [Inspect Context and Usage](#inspect-context-and-usage)
 - [Installation](#installation)
@@ -116,11 +117,30 @@ Codex levels come from its local model cache. Claude levels use the documented [
 
 ![LazyAI: switching providers and models](docs/gifs/switch-providers-and-models.gif)
 
+### Select an Agent Mode
+
+Press `f` to open **Modes**. Move with `j` / `k` or the arrow keys, press `Enter` to apply, or `Esc` to cancel. The global status panel shows the selected mode. Selection is disabled while any response, approval, or session resume is in progress.
+
+| Mode | Claude Code | Codex |
+| --- | --- | --- |
+| **Manual** (initial default) | Native `default` permissions: ask for actions not already permitted | Read-only sandbox and approvals for changes/untrusted commands |
+| **Accept edits** | Native `acceptEdits`: allow ordinary edits and filesystem operations | Workspace writes enabled; untrusted commands and escalations require approval |
+| **Auto** | Native `auto`: classifier reviews actions; model/account availability applies | Workspace writes plus automatic review of eligible escalations |
+| **Plan** | Native planning mode; permission-requiring actions and automatic exit are declined | Native planning collaboration mode, read-only sandbox, and no permission escalations |
+
+The modes express the same intent but have different provider semantics. In Codex, workspace write access also permits file changes through allowed commands; **Accept edits** does not promise a prompt for every shell command. **Auto** retains provider restrictions and does not enable bypass permissions or unrestricted execution. Unsupported modes show an explanation. If a provider rejects a mode, LazyAI reports the failure instead of silently running the prompt in another mode. Claude Auto availability is confirmed when the first turn initializes; a rejected selection is then marked unavailable.
+
+The selected mode applies across projects, providers, models, new sessions, and subsequent prompts in resumed sessions. It is saved in LazyAI's own `settings.json` under `$XDG_CONFIG_HOME/lazy-ai`, `%APPDATA%/lazy-ai` on Windows, or `~/.config/lazy-ai` otherwise. Provider configuration files are not rewritten. Codex policy fields are checked against its response before a prompt is sent; the integration was verified against the Codex 0.157.0 protocol. Older versions may require an update.
+
+To implement a plan, wait for the planning response to finish, review it, press `f` to select Manual, Accept edits, or Auto, and press `p` to send your implementation instruction. Plan remains selected until you change it. Switching modes preserves the transcript and clears temporary runtime grants; existing user-managed permission rules still apply.
+
+When an agent needs clarification, LazyAI shows its questions in a modal. Use `j` / `k` or arrows to choose, `Space` to toggle multiple selections, `Tab` to type a custom answer, and `Enter` to continue. Answers are sent after the final question. `Esc` cancels the batch; cancelled or interrupted requests are not left waiting.
+
 ### Approve Codex or Claude Code Tools
 
 When Codex or Claude Code asks for tool permission, LazyAI opens an in-terminal approval modal. Choose whether to allow once, allow for the session when available, or deny. `j` / `k` move between the choices, `Enter` confirms, and `Esc` denies.
 
-Session-wide approval is only offered when the provider says the request supports it. LazyAI asks Codex to route escalations to this modal, so approvals appear here rather than following the `approval_policy` in `~/.codex/config.toml`.
+Session-wide approval is only offered when the provider says the request supports it. The selected agent mode determines which requests reach this modal. Auto routes eligible requests through the provider's automatic reviewer; Plan declines permission escalations. Switching modes clears runtime session grants while preserving the conversation.
 
 ![LazyAI: approving Codex or Claude Code tool requests](docs/gifs/approve-codex-or-claude-code-tools.gif)
 
@@ -179,12 +199,15 @@ Dashboard shortcuts apply while no modal is open.
 | `i` | Dashboard | Interrupt the active session's response |
 | `d` | Sessions | Open the delete confirmation for the highlighted Codex session |
 | `m` | Dashboard | Open the provider and model picker |
+| `f` | Dashboard | Select the global agent mode |
 | `j` / `k` | Details | Scroll down / up |
 | `PageDown` / `PageUp` | Details | Scroll down / up in larger steps |
 | `Home` / `End` | Details | Jump to the top / bottom of the conversation |
 | `?` | Dashboard | Open keybinding help |
 | `q` | Dashboard | Quit |
-| `j` / `k` | Model picker, tool permissions | Move between choices |
+| `j` / `k` | Model picker, modes, tool permissions, agent questions | Move between choices |
+| `Space` | Multiple-choice agent questions | Toggle a selection |
+| `Tab` | Agent questions | Type a custom answer when offered |
 | `h` / `l` | Model picker | Change thinking level for the highlighted model |
 | `Enter` | Prompts, picker, confirmations | Submit the prompt or confirm the selected action |
 | `Ctrl+J` | Prompt input | Insert a new line |
@@ -197,6 +220,8 @@ Dashboard shortcuts apply while no modal is open.
 | Browse projects, sessions, and conversations | Yes | Yes |
 | Start, resume, prompt, and interrupt | Yes | Yes |
 | Provider and model selection | Yes | Yes |
+| Manual, Accept edits, Auto, Plan modes | Yes, subject to provider availability | Yes, subject to protocol and organization support |
+| Agent questions | Multiple choice, multiple selections, and text | Multiple choice and text |
 | Delete sessions | Not supported | Yes, with confirmation |
 | Tool permission modal | Yes | Yes, for commands and file edits |
 | Token/context information | When present in transcripts | When present in transcripts |

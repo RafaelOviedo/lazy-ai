@@ -21,6 +21,7 @@ type SessionResumeControllerOptions = {
 };
 
 export type SessionResumeController = {
+  hasPendingResumes(): boolean;
   attachSession(sessionId: string, threadId: string): void;
   clearActiveSession(sessionId?: string): void;
   dispose(): void;
@@ -185,6 +186,7 @@ export function createSessionResumeController(options: SessionResumeControllerOp
   }
 
   return {
+    hasPendingResumes: () => pendingResumes.size > 0,
     attachSession,
     clearActiveSession,
     dispose,

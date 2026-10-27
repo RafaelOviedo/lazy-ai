@@ -149,12 +149,12 @@ export function createSessionRunController(options: Options) {
         if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250));
         if (!isCurrent(run)) return;
       }
-    } catch {
+    } catch (error) {
       if (!isCurrent(run)) return;
       run.turnId = null;
       run.status = "failed";
       options.onTurnFinished(session.id, threadId);
-      options.reportActionError(`${options.providerLabel} session “${run.session.title}”: Failed to generate a response.`);
+      options.reportActionError(`${options.providerLabel} session “${run.session.title}”: ${error instanceof Error ? error.message : "Failed to generate a response."}`);
     } finally {
       stopPolling(run);
       if (isCurrent(run)) {
@@ -188,8 +188,8 @@ export function createSessionRunController(options: Options) {
       const completion = runTurn(session, threadId, text);
       onStarted(session, threadId);
       await completion;
-    } catch {
-      if (!disposed) options.reportActionError(`Failed to start ${options.providerLabel} session.`);
+    } catch (error) {
+      if (!disposed) options.reportActionError(`Failed to start ${options.providerLabel} session. ${error instanceof Error ? error.message : ""}`);
     } finally {
       pendingStarts -= 1;
     }

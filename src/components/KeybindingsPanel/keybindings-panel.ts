@@ -59,7 +59,9 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
      * Re-renders the light DOM for the panel.
      */
     private render(): void {
-      renderWithStableStyle(this, `
+      renderWithStableStyle(
+        this,
+        `
         <style>
           keybindings-panel {
             display: flex;
@@ -94,7 +96,8 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
           </div>
         </div>
         <span>v1.4.0</span>
-      `);
+      `,
+      );
     }
 
     /**
