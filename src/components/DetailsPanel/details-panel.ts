@@ -16,7 +16,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
   const thinkingSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   // Every screen change re-lays out the whole transcript, so animation and
   // stream updates are paced to leave the event loop room for key handling.
-  const thinkingSpinnerIntervalMs = 150;
+  const thinkingSpinnerIntervalMs = 100;
   const liveStreamRefreshIntervalMs = 200;
   // TermDOM restyles a parent's whole subtree when a child is added or removed.
   // Rows therefore go into small groups, each nested as the last child of the
@@ -428,6 +428,18 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
             border-top: 1px solid #5fafff;
           }
 
+          /*
+           * The thinking row is pinned here instead of trailing the scrolling
+           * transcript, where reading earlier output scrolls it out of sight.
+           * The strip has no border so it reads as part of the panel, and it
+           * keeps its row while idle so starting a turn never reflows the
+           * transcript beside it.
+           */
+          .details-panel__status-bar {
+            flex: 0 0 1px;
+            overflow: hidden;
+          }
+
           .details-panel__session-title {
             color: #d7ecff;
           }
@@ -438,7 +450,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
           .details-panel__thinking {
             color: #d7ba7d;
-            padding: 1px;
+            padding: 0 1px;
           }
 
           .details-panel__interrupted {
@@ -555,6 +567,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         <div class="details-panel__content">
           ${this.renderContentMarkup()}
         </div>
+        <div class="details-panel__status-bar" data-status-bar="true">${
+          this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""
+        }</div>
       `);
 
       this.renderedSessionId = this.viewedSessionValue?.id ?? null;
@@ -610,8 +625,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       return `<div data-status-rows="true">${
         this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""
       }${
-        this.isViewedSessionThinking() ? this.renderThinkingMarkup() : ""
-      }${
         this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""
       }</div>`;
     }
@@ -654,7 +667,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Builds the pending assistant response row.
+     * Builds the pending assistant response row shown in the pinned status bar.
      */
     private renderThinkingMarkup(): string {
       return `<div class="details-panel__thinking" data-thinking-row="true"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> Thinking...</div>`;
@@ -925,20 +938,16 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.removeEmptyConversationMarkup();
 
       if (!existingPendingPrompt) {
-        const thinkingElement = this.getThinkingElement();
-
-        if (thinkingElement) {
-          thinkingElement.insertAdjacentHTML("beforebegin", this.renderPendingUserPromptMarkup());
-        } else {
-          statusRowsContainer.insertAdjacentHTML("afterbegin", this.renderPendingUserPromptMarkup());
-        }
-
+        statusRowsContainer.insertAdjacentHTML("afterbegin", this.renderPendingUserPromptMarkup());
         this.scrollToBottom();
       }
     }
 
     /**
-     * Adds or removes the pending assistant row in place.
+     * Adds or removes the pending assistant row in the pinned status bar.
+     *
+     * Only the row inside the bar is added or removed; the bar itself stays on
+     * screen, so a turn starting or ending never restyles the transcript.
      */
     private syncThinkingMarkup(): void {
       if (!this.viewedSessionValue || this.isLoading || this.loadError) {
@@ -947,9 +956,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
-      const statusRowsContainer = this.getStatusRowsContainer();
+      const statusBarContainer = this.getStatusBarContainer();
 
-      if (!statusRowsContainer) {
+      if (!statusBarContainer) {
         this.render();
         return;
       }
@@ -972,7 +981,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       this.removeEmptyConversationMarkup();
 
       if (!existingThinkingRow) {
-        statusRowsContainer.insertAdjacentHTML("beforeend", this.renderThinkingMarkup());
+        statusBarContainer.insertAdjacentHTML("beforeend", this.renderThinkingMarkup());
         this.scrollToBottom();
       }
 
@@ -1118,10 +1127,17 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Finds the container for the pending, thinking, and interrupted rows.
+     * Finds the container for the pending and interrupted rows.
      */
     private getStatusRowsContainer(): HTMLElement | null {
       return this.querySelector<HTMLElement>("[data-status-rows='true']");
+    }
+
+    /**
+     * Finds the borderless strip pinned under the transcript.
+     */
+    private getStatusBarContainer(): HTMLElement | null {
+      return this.querySelector<HTMLElement>("[data-status-bar='true']");
     }
 
     /**
@@ -1308,14 +1324,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private scrollToBottom(): void {
       const lastMessage = [...this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")].at(-1);
       const pendingUserPrompt = this.getPendingUserPromptElement();
-      const thinkingElement = this.getThinkingElement();
       const interruptedElement = this.getInterruptedElement();
       const content = this.querySelector<HTMLElement>(".details-panel__content");
-
-      if (thinkingElement) {
-        thinkingElement.scrollIntoView({ block: "end" });
-        return;
-      }
 
       if (interruptedElement) {
         interruptedElement.scrollIntoView({ block: "end" });
