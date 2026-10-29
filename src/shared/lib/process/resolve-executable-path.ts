@@ -50,10 +50,17 @@ async function findOnPath(binaryName: string, requireExecutable: boolean): Promi
     ? (process.env.PATHEXT ?? defaultWindowsExtensions).split(";").filter(Boolean)
     : [];
 
+  // Windows resolves a PATHEXT suffix before ever considering the bare name,
+  // and so must this: npm installs both `codex.cmd` and an extensionless
+  // `codex` that is a `#!/bin/sh` script, and only the first of those is
+  // something CreateProcess can launch. Preferring the bare name picked the
+  // shell script and failed with ENOENT. It stays last as a fallback so a
+  // genuine extensionless binary is still found.
+  const suffixes = isWindows ? [...extensions, ""] : [""];
   const candidates = searchPath
     .split(delimiter)
     .filter(Boolean)
-    .flatMap((directory) => ["", ...extensions].map((extension) => join(directory, `${binaryName}${extension}`)));
+    .flatMap((directory) => suffixes.map((extension) => join(directory, `${binaryName}${extension}`)));
 
   const matches = await Promise.all(candidates.map((candidate) => isAccessible(candidate, requireExecutable)));
   const firstMatchIndex = matches.findIndex(Boolean);
