@@ -7,6 +7,8 @@ import { agentModes, codexModePolicy, type AgentMode, type ModeAvailability } fr
 import type { AgentQuestion } from "../../entities/provider/types.js";
 
 import type {
+  BackgroundActivityHandler,
+  BackgroundTask,
   ToolPermissionDecision,
   ToolPermissionHandler,
   ToolPermissionRequest,
@@ -14,11 +16,14 @@ import type {
 import type {
   CodexAppServerClientOptions,
   CodexApprovalDecision,
+  CodexBackgroundTerminal,
+  CodexBackgroundTerminalsListResponse,
   CodexCommandExecutionApprovalParams,
   CodexFileChangeApprovalParams,
-  CodexItemStartedNotification,
+  CodexItemNotification,
   CodexOfferedApprovalDecision,
   CodexServerRequestResolvedNotification,
+  CodexThreadStatusChangedNotification,
 } from "./types.js";
 
 type JsonRpcRequest = {
@@ -155,6 +160,14 @@ const jsonRpcMethodNotFoundCode = -32601;
 // File-change items are announced far more often than they are asked about, so
 // the path cache is trimmed rather than left to grow for the whole process.
 const fileChangeItemCacheLimit = 200;
+// Codex announces neither the birth nor the death of a background terminal, so
+// the list is re-read on a delay after anything that could have changed it, and
+// kept being re-read while one is alive so its exit is noticed.
+const backgroundTerminalPollIntervalMs = 1500;
+/** Collab agent states that mean the agent still has work to do. */
+const liveCollabAgentStatuses = new Set(["pendingInit", "running"]);
+/** `subAgentActivity` phases that leave the agent running. */
+const liveSubAgentActivityKinds = new Set(["started", "interacted"]);
 
 export class CodexAppServerClient {
   private isDisposed = false;
@@ -180,6 +193,15 @@ export class CodexAppServerClient {
   /** Changed paths per file-change item id, for the approval prompt to show. */
   private fileChangePathsByItemId = new Map<string, string[]>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
+  private backgroundActivityHandler: BackgroundActivityHandler | null = null;
+  /** Live sub-agent thread ids, keyed by the thread that spawned them. */
+  private readonly subAgentThreadsByThread = new Map<string, Set<string>>();
+  /** Last read of each thread's background terminals. */
+  private readonly backgroundTerminalsByThread = new Map<string, CodexBackgroundTerminal[]>();
+  /** At most one pending terminals read per thread. */
+  private readonly backgroundTerminalPolls = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Last reported task ids per thread, so an unchanged set is not re-sent. */
+  private readonly reportedActivityByThread = new Map<string, string>();
   private completedTurns: CodexAppServerTurnCompletionResult[] = [];
   private stderrLines: string[] = [];
 
@@ -261,6 +283,10 @@ export class CodexAppServerClient {
 
   setToolPermissionHandler(handler: ToolPermissionHandler | null): void {
     this.toolPermissionHandler = handler;
+  }
+
+  setBackgroundActivityHandler(handler: BackgroundActivityHandler | null): void {
+    this.backgroundActivityHandler = handler;
   }
 
   async resumeThread(threadId: string, cwd?: string): Promise<CodexAppServerResumeResult> {
@@ -428,7 +454,10 @@ export class CodexAppServerClient {
     // Answered before the process goes away so Codex is never left waiting on a
     // prompt nothing can show any more.
     this.declinePendingServerRequests();
+    this.clearBackgroundActivity();
+    this.reportedActivityByThread.clear();
     this.toolPermissionHandler = null;
+    this.backgroundActivityHandler = null;
     this.fileChangePathsByItemId.clear();
 
     this.rejectPendingRequests(new Error("Codex app-server client disposed."));
@@ -598,8 +627,14 @@ export class CodexAppServerClient {
   }
 
   private handleNotification(notification: JsonRpcNotification): void {
-    if (notification.method === "item/started") {
-      this.recordFileChangeItem(notification.params);
+    if (notification.method === "item/started" || notification.method === "item/completed") {
+      if (notification.method === "item/started") this.recordFileChangeItem(notification.params);
+      this.recordActivityItem(notification.params);
+      return;
+    }
+
+    if (notification.method === "thread/status/changed") {
+      this.recordThreadStatus(notification.params);
       return;
     }
 
@@ -614,6 +649,9 @@ export class CodexAppServerClient {
 
     if (!completion) return;
     this.runningThreads.delete(completion.threadId);
+    // The moment the spinner would otherwise go out is worth one more read: a
+    // terminal the turn left behind is invisible until the list is asked for.
+    this.scheduleBackgroundTerminalPoll(completion.threadId);
 
     this.completedTurns.push(completion);
     this.completedTurns = this.completedTurns.slice(-20);
@@ -827,11 +865,173 @@ export class CodexAppServerClient {
   }
 
   /**
+   * Tracks work that outlives the turn which started it.
+   *
+   * Sub-agents are read from two sources on purpose: `subAgentActivity` is the
+   * edge stream, and `collabAgentToolCall.agentsStates` carries absolute
+   * statuses that correct it if an edge is ever missed.
+   */
+  private recordActivityItem(params: unknown): void {
+    const notification = params as CodexItemNotification | undefined;
+    const item = notification?.item;
+    const threadId = notification?.threadId;
+
+    if (!item || !threadId) return;
+
+    if (item.type === "subAgentActivity") {
+      this.trackSubAgent(threadId, item.agentThreadId, liveSubAgentActivityKinds.has(item.kind ?? ""));
+      return;
+    }
+
+    if (item.type === "collabAgentToolCall") {
+      for (const [agentThreadId, state] of Object.entries(item.agentsStates ?? {})) {
+        this.trackSubAgent(threadId, agentThreadId, liveCollabAgentStatuses.has(state?.status ?? ""));
+      }
+      return;
+    }
+
+    if (item.type === "commandExecution") {
+      // Even a finished exec can have left a shell running behind it.
+      this.scheduleBackgroundTerminalPoll(threadId);
+    }
+  }
+
+  /**
+   * A sub-agent runs in a thread of its own, so that thread going idle is proof
+   * it has stopped even when its closing item never arrives.
+   */
+  private recordThreadStatus(params: unknown): void {
+    const notification = params as CodexThreadStatusChangedNotification | undefined;
+    const threadId = notification?.threadId;
+
+    if (!threadId || notification?.status?.type !== "idle") return;
+
+    for (const [parentThreadId, agents] of this.subAgentThreadsByThread) {
+      if (!agents.delete(threadId)) continue;
+
+      if (agents.size === 0) this.subAgentThreadsByThread.delete(parentThreadId);
+      this.emitBackgroundActivity(parentThreadId);
+    }
+  }
+
+  private trackSubAgent(threadId: string, agentThreadId: string | undefined, isLive: boolean): void {
+    if (!agentThreadId) return;
+
+    const agents = this.subAgentThreadsByThread.get(threadId) ?? new Set<string>();
+
+    if (isLive) agents.add(agentThreadId);
+    else agents.delete(agentThreadId);
+
+    if (agents.size > 0) this.subAgentThreadsByThread.set(threadId, agents);
+    else this.subAgentThreadsByThread.delete(threadId);
+
+    this.emitBackgroundActivity(threadId);
+  }
+
+  private scheduleBackgroundTerminalPoll(threadId: string): void {
+    if (this.isDisposed || !this.backgroundActivityHandler) return;
+    if (this.backgroundTerminalPolls.has(threadId)) return;
+
+    const timer = setTimeout(() => {
+      this.backgroundTerminalPolls.delete(threadId);
+      void this.readBackgroundTerminals(threadId);
+    }, backgroundTerminalPollIntervalMs);
+
+    // A pending read must never be the reason the process stays alive.
+    timer.unref?.();
+    this.backgroundTerminalPolls.set(threadId, timer);
+  }
+
+  private async readBackgroundTerminals(threadId: string): Promise<void> {
+    if (this.isDisposed || !this.process || !this.backgroundActivityHandler) return;
+
+    let terminals: CodexBackgroundTerminal[] = [];
+
+    try {
+      const response = await this.request<CodexBackgroundTerminalsListResponse>(
+        "thread/backgroundTerminals/list",
+        { threadId },
+      );
+      terminals = response?.data ?? [];
+    } catch {
+      // Treated as nothing running rather than left stale: the next exec or turn
+      // reschedules, so a transient read cannot wedge the indicator on.
+      terminals = [];
+    }
+
+    if (this.isDisposed) return;
+
+    if (terminals.length > 0) this.backgroundTerminalsByThread.set(threadId, terminals);
+    else this.backgroundTerminalsByThread.delete(threadId);
+
+    this.emitBackgroundActivity(threadId);
+
+    // Keep watching while any are alive, since their exit is not announced.
+    if (terminals.length > 0) this.scheduleBackgroundTerminalPoll(threadId);
+  }
+
+  /**
+   * Reports one thread's still-running work, skipping a set that has not moved
+   * since the last report.
+   */
+  private emitBackgroundActivity(threadId: string): void {
+    const handler = this.backgroundActivityHandler;
+
+    if (!handler) return;
+
+    const tasks: BackgroundTask[] = [];
+
+    for (const agentThreadId of this.subAgentThreadsByThread.get(threadId) ?? []) {
+      tasks.push({ description: "Sub-agent", id: agentThreadId, kind: "subAgent" });
+    }
+
+    for (const terminal of this.backgroundTerminalsByThread.get(threadId) ?? []) {
+      const id = terminal.processId ?? terminal.itemId;
+
+      if (!id) continue;
+
+      tasks.push({ description: terminal.command?.trim() || "Background command", id, kind: "terminal" });
+    }
+
+    const signature = tasks.map((task) => `${task.kind}:${task.id}`).join("|");
+
+    if (this.reportedActivityByThread.get(threadId) === signature) return;
+
+    if (signature) this.reportedActivityByThread.set(threadId, signature);
+    else this.reportedActivityByThread.delete(threadId);
+
+    try {
+      handler({ sessionId: threadId, tasks });
+    } catch {
+      // A display listener must never take down the notification reader.
+    }
+  }
+
+  /**
+   * Drops every tracked task and says so, for when the process backing them is
+   * gone and nothing it owned can still be running.
+   */
+  private clearBackgroundActivity(): void {
+    for (const timer of this.backgroundTerminalPolls.values()) clearTimeout(timer);
+    this.backgroundTerminalPolls.clear();
+
+    const threadIds = new Set([
+      ...this.subAgentThreadsByThread.keys(),
+      ...this.backgroundTerminalsByThread.keys(),
+    ]);
+
+    this.subAgentThreadsByThread.clear();
+    this.backgroundTerminalsByThread.clear();
+
+    for (const threadId of threadIds) this.emitBackgroundActivity(threadId);
+  }
+
+  /**
    * Remembers which files a change touches. The approval request carries no
    * paths, so they come from the item that announced the change.
    */
   private recordFileChangeItem(params: unknown): void {
-    const item = (params as CodexItemStartedNotification | undefined)?.item;
+    const item = (params as CodexItemNotification | undefined)?.item;
 
     if (item?.type !== "fileChange" || !item.id) return;
 
@@ -926,6 +1126,7 @@ export class CodexAppServerClient {
   private handleProcessError(error: Error): void {
     this.loadedThreads.clear();
     this.runningThreads.clear();
+    this.clearBackgroundActivity();
     this.rejectPendingRequests(new Error(`Codex app-server failed to start: ${error.message}`));
     this.rejectPendingTurnCompletions(new Error(`Codex app-server failed to start: ${error.message}`));
     // Left unanswered: there is no process to answer to any more.
@@ -937,6 +1138,7 @@ export class CodexAppServerClient {
   private handleProcessExit(code: number | null, signal: NodeJS.Signals | null): void {
     this.loadedThreads.clear();
     this.runningThreads.clear();
+    this.clearBackgroundActivity();
     const stderr = this.stderrLines.length > 0 ? ` ${this.stderrLines.join(" ")}` : "";
     const reason = signal ? `signal ${signal}` : `code ${code ?? "unknown"}`;
 

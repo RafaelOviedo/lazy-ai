@@ -62,15 +62,48 @@ export type CodexFileChangeApprovalParams = {
   turnId?: string;
 };
 
+/** One target agent's last known state inside a `collabAgentToolCall` item. */
+export type CodexCollabAgentState = {
+  status?: string;
+};
+
 export type CodexThreadItem = {
+  /** Sub-agent thread a `subAgentActivity` item reports on. */
+  agentThreadId?: string;
+  /** Target agent states on a `collabAgentToolCall` item, keyed by thread id. */
+  agentsStates?: Record<string, CodexCollabAgentState | undefined>;
   changes?: { path?: string }[];
+  command?: string;
   id?: string;
+  /** Lifecycle phase on a `subAgentActivity` item. */
+  kind?: string;
+  status?: string;
   type?: string;
 };
 
-export type CodexItemStartedNotification = {
+/** Shared shape of `item/started` and `item/completed`. */
+export type CodexItemNotification = {
   item?: CodexThreadItem;
   threadId?: string;
+};
+
+export type CodexThreadStatusChangedNotification = {
+  status?: { type?: string };
+  threadId?: string;
+};
+
+/**
+ * One shell Codex left running. Codex pushes nothing when these appear or exit,
+ * so they are only ever learned by asking.
+ */
+export type CodexBackgroundTerminal = {
+  command?: string;
+  itemId?: string;
+  processId?: string;
+};
+
+export type CodexBackgroundTerminalsListResponse = {
+  data?: CodexBackgroundTerminal[] | null;
 };
 
 export type CodexServerRequestResolvedNotification = {
