@@ -67,6 +67,31 @@ export type LiveConversationEvent =
 export type LiveConversationHandler = (event: LiveConversationEvent) => void;
 
 /**
+ * What one piece of still-running background work is. Providers name their task
+ * types differently, so each maps its own vocabulary onto these.
+ */
+export type BackgroundTaskKind = "subAgent" | "terminal" | "other";
+
+/** One unit of work a provider is still running. */
+export type BackgroundTask = {
+  description: string;
+  id: string;
+  kind: BackgroundTaskKind;
+};
+
+/**
+ * The complete set of a session's live background work, re-sent whenever that
+ * set changes. Carrying the whole set rather than start/stop pairs means a
+ * dropped event cannot wedge the UI on a task that has already finished.
+ */
+export type BackgroundActivityEvent = {
+  sessionId: string;
+  tasks: BackgroundTask[];
+};
+
+export type BackgroundActivityHandler = (event: BackgroundActivityEvent) => void;
+
+/**
  * What a provider can actually be driven to do, rather than only read. Keeping
  * these separate stops one unimplemented action from gating the others.
  */
@@ -100,6 +125,12 @@ export interface ProviderRuntimeClient {
    * that expose it; others rely on re-reading the transcript.
    */
   setLiveConversationHandler?(handler: LiveConversationHandler | null): void;
+  /**
+   * Reports work that outlives the turn which spawned it, such as sub-agents
+   * and backgrounded shells. Only implemented by providers that announce it;
+   * without it a turn's end is taken as the end of all its work.
+   */
+  setBackgroundActivityHandler?(handler: BackgroundActivityHandler | null): void;
   startThread(cwd?: string): Promise<{ sessionId: string; threadId: string }>;
   /** Returns the accepted turn's thinking level, or null if unresolved. */
   startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string; effort: string | null }>;

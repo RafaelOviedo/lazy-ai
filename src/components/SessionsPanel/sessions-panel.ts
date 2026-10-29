@@ -42,6 +42,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private resumingSessionIdValue: string | null = null;
     private deletingSessionIdValue: string | null = null;
     private runStatuses = new Map<string, SessionRunStatus>();
+    private runActivityLabels = new Map<string, string>();
     private liveSessions = new Map<string, SessionSummary>();
     private loadVersion = 0;
     private alreadyRunningSessionIdValue: string | null = null;
@@ -197,13 +198,28 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     forgetSession(sessionId: string): void {
       this.liveSessions.delete(sessionId);
       this.runStatuses.delete(sessionId);
+      this.runActivityLabels.delete(sessionId);
     }
 
-    /** Updates only the affected session; other running rows keep their status. */
-    setSessionRunStatus(sessionId: string, status: SessionRunStatus): void {
-      if (this.runStatuses.get(sessionId) === status) return;
+    /**
+     * Updates only the affected session; other running rows keep their status.
+     *
+     * `activityLabel` names work still running for the session, which can
+     * outlast the turn, and takes precedence over the turn's own status.
+     */
+    setSessionRunStatus(sessionId: string, status: SessionRunStatus, activityLabel: string | null = null): void {
+      const previousLabel = this.runActivityLabels.get(sessionId) ?? null;
+
+      if (this.runStatuses.get(sessionId) === status && previousLabel === activityLabel) return;
 
       this.runStatuses.set(sessionId, status);
+
+      if (activityLabel) {
+        this.runActivityLabels.set(sessionId, activityLabel);
+      } else {
+        this.runActivityLabels.delete(sessionId);
+      }
+
       if (this.isConnected) this.updateSessionStatusMarkup(sessionId);
     }
 
@@ -1000,7 +1016,7 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
         ? '<span class="sessions-panel__active-label" data-active-session="true">Active</span> · '
         : "";
 
-      if (["starting", "thinking"].includes(this.runStatuses.get(session.id) ?? "")) {
+      if (this.runActivityLabels.has(session.id) || ["starting", "thinking"].includes(this.runStatuses.get(session.id) ?? "")) {
         return `${activeLabel}<span class="sessions-panel__status-thinking"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> ${statusText}</span>`;
       }
 
@@ -1032,6 +1048,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (session.id === this.deletingSessionIdValue) {
         return { className: "sessions-panel__status-deleting", text: "Deleting..." };
+      }
+
+      const activityLabel = this.runActivityLabels.get(session.id);
+
+      if (activityLabel) {
+        return { className: "sessions-panel__status-thinking", text: activityLabel };
       }
 
       const runStatus = this.runStatuses.get(session.id);

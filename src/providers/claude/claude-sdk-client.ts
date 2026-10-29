@@ -13,11 +13,19 @@ import type {
   PermissionResult,
   PermissionUpdate,
   Query,
+  SDKBackgroundTasksChangedMessage,
   SDKMessage,
   SDKResultMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { LiveConversationHandler, ProviderRuntimeClient, ToolPermissionHandler } from "../../entities/provider/index.js";
+import type {
+  BackgroundActivityHandler,
+  BackgroundTask,
+  BackgroundTaskKind,
+  LiveConversationHandler,
+  ProviderRuntimeClient,
+  ToolPermissionHandler,
+} from "../../entities/provider/index.js";
 import type { ClaudeSdkClientOptions } from "./types.js";
 
 type TurnCompletion = {
@@ -73,6 +81,23 @@ const interruptRetryIntervalMs = 1500;
 // during which an interrupt aborts nothing. Retries stop as soon as the turn
 // ends, so a high ceiling costs nothing on a warm session.
 const interruptRetryLimit = 40;
+/**
+ * Claude Code's raw task discriminants, which are what
+ * `background_tasks_changed` carries. Anything unrecognised still counts as
+ * activity, so an added task type keeps the indicator honest instead of
+ * silently disappearing from it.
+ */
+const backgroundTaskKinds: Record<string, BackgroundTaskKind> = {
+  local_agent: "subAgent",
+  subagent: "subAgent",
+  local_bash: "terminal",
+  shell: "terminal",
+};
+
+function readBackgroundTaskKind(taskType: string | undefined): BackgroundTaskKind {
+  return (taskType && backgroundTaskKinds[taskType]) || "other";
+}
+
 const deniedByUserMessage = "The user declined this tool call in lazy-ai.";
 const noApprovalSurfaceMessage = "lazy-ai has no approval surface attached, so this tool call was declined.";
 
@@ -101,6 +126,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   private readonly sessions = new Map<string, LiveSession>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
   private liveConversationHandler: LiveConversationHandler | null = null;
+  private backgroundActivityHandler: BackgroundActivityHandler | null = null;
   private isDisposed = false;
 
   constructor(options: ClaudeSdkClientOptions = {}, private readonly createQuery: typeof query = query) {
@@ -149,6 +175,10 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   setLiveConversationHandler(handler: LiveConversationHandler | null): void {
     this.liveConversationHandler = handler;
+  }
+
+  setBackgroundActivityHandler(handler: BackgroundActivityHandler | null): void {
+    this.backgroundActivityHandler = handler;
   }
 
   /**
@@ -325,6 +355,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     this.isDisposed = true;
     this.toolPermissionHandler = null;
     this.liveConversationHandler = null;
+    this.backgroundActivityHandler = null;
 
     for (const session of this.sessions.values()) {
       this.closeSession(session, new Error("Claude Code client disposed."));
@@ -367,6 +398,9 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       options: this.buildQueryOptions(session),
     });
 
+    // Nothing is emitted at startup, so the previous process's tasks have to be
+    // dropped here rather than waiting for a change that may never come.
+    this.emitBackgroundActivity(session, []);
     session.pumpPromise = this.pumpSession(session);
   }
 
@@ -427,6 +461,10 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
           // Do not continue generating with a mode different from the user's choice.
           void sessionQuery.interrupt().catch(() => undefined);
         }
+        if (message.type === "system" && message.subtype === "background_tasks_changed") {
+          this.emitBackgroundActivity(session, message.tasks);
+          continue;
+        }
         if (message.type === "result") {
           stream.text = "";
           this.recordTurnCompletion(session, message);
@@ -452,6 +490,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       session.input?.end();
       session.input = null;
       session.query = null;
+      this.emitBackgroundActivity(session, []);
     }
   }
 
@@ -494,6 +533,35 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
         message: text
           ? { id: message.uuid, role: "assistant", text, timestamp: new Date().toISOString() }
           : null,
+      });
+    } catch {
+      // A display listener must never take down the pump that settles turns.
+    }
+  }
+
+  /**
+   * Reports the background work Claude Code still has running, so the UI can
+   * keep showing activity after the turn that spawned it has already settled.
+   *
+   * Claude Code sends the whole live set on every change, so this replaces
+   * rather than merges. Ambient entries are housekeeping the SDK asks hosts to
+   * keep out of activity indicators.
+   */
+  private emitBackgroundActivity(session: LiveSession, tasks: SDKBackgroundTasksChangedMessage["tasks"]): void {
+    const handler = this.backgroundActivityHandler;
+
+    if (!handler) return;
+
+    try {
+      handler({
+        sessionId: session.sessionId,
+        tasks: tasks
+          .filter((task) => !task.ambient)
+          .map((task): BackgroundTask => ({
+            description: task.description,
+            id: task.task_id,
+            kind: readBackgroundTaskKind(task.task_type),
+          })),
       });
     } catch {
       // A display listener must never take down the pump that settles turns.

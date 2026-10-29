@@ -17,4 +17,5 @@ export type DetailsPanelElement = HTMLElement & {
   applyLiveEvent(event: LiveConversationEvent): void;
   settleLiveEvents(sessionId: string): void;
   thinkingSessionId: string | null;
+  thinkingLabel: string;
 };

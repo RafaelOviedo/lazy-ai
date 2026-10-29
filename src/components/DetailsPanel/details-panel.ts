@@ -17,6 +17,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
   // Every screen change re-lays out the whole transcript, so animation and
   // stream updates are paced to leave the event loop room for key handling.
   const thinkingSpinnerIntervalMs = 100;
+  const defaultThinkingLabel = "Thinking...";
   const liveStreamRefreshIntervalMs = 200;
   // TermDOM restyles a parent's whole subtree when a child is added or removed.
   // Rows therefore go into small groups, each nested as the last child of the
@@ -31,6 +32,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private pendingUserPromptValue: PendingSessionPrompt | null = null;
     private pendingUserPromptInitialMatchCount = 0;
     private thinkingSessionIdValue: string | null = null;
+    private thinkingLabelValue = defaultThinkingLabel;
     private interruptedSessionIdValue: string | null = null;
     private sessionReader: SessionReader | null = null;
     private messages: ConversationMessage[] = [];
@@ -184,6 +186,27 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     get thinkingSessionId(): string | null {
       return this.thinkingSessionIdValue;
+    }
+
+    /**
+     * Names what the opened session is doing, shown beside the spinner. A turn
+     * can settle while sub-agents or shells it started keep running, so this
+     * says which of those is happening rather than always claiming "Thinking".
+     */
+    set thinkingLabel(value: string) {
+      const label = value.trim() || defaultThinkingLabel;
+
+      if (this.thinkingLabelValue === label) return;
+
+      this.thinkingLabelValue = label;
+
+      if (this.isConnected) {
+        this.syncThinkingLabelMarkup();
+      }
+    }
+
+    get thinkingLabel(): string {
+      return this.thinkingLabelValue;
     }
 
     /**
@@ -670,7 +693,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Builds the pending assistant response row shown in the pinned status bar.
      */
     private renderThinkingMarkup(): string {
-      return `<div class="details-panel__thinking" data-thinking-row="true"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> Thinking...</div>`;
+      return `<div class="details-panel__thinking" data-thinking-row="true"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> <span data-thinking-label="true">${escapeHtml(this.thinkingLabelValue)}</span></div>`;
     }
 
     /**
@@ -986,6 +1009,19 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       }
 
       this.syncThinkingSpinnerAnimation();
+      this.syncThinkingLabelMarkup();
+    }
+
+    /**
+     * Retitles the pending row in place, so a change of activity never rebuilds
+     * the status bar or restarts the spinner.
+     */
+    private syncThinkingLabelMarkup(): void {
+      const label = this.querySelector<HTMLElement>("[data-thinking-label='true']");
+
+      if (label) {
+        label.textContent = this.thinkingLabelValue;
+      }
     }
 
     /**

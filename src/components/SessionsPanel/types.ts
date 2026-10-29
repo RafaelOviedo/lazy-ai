@@ -36,7 +36,7 @@ export type SessionsPanelElement = HTMLElement & {
   setSessionDeleting(sessionId: string | null): void;
   setSessionResumeFailed(sessionId: string | null): void;
   setSessionResuming(sessionId: string | null): void;
-  setSessionRunStatus(sessionId: string, status: SessionRunStatus): void;
+  setSessionRunStatus(sessionId: string, status: SessionRunStatus, activityLabel?: string | null): void;
   upsertSession(session: SessionSummary): void;
   forgetSession(sessionId: string): void;
   repository: SessionReader;

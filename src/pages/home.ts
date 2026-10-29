@@ -46,7 +46,7 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
 import { createSessionDeleteController } from "../features/delete-session/index.js";
-import { createSessionRunController } from "../features/run-session/index.js";
+import { createSessionRunController, describeRunActivity } from "../features/run-session/index.js";
 import { createSessionResumeController } from "../features/resume-session/index.js";
 import { createToolApprovalController } from "../features/approve-tool-use/index.js";
 import { createUsageLimitController } from "../features/refresh-usage-limit/index.js";
@@ -312,7 +312,12 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       if (isDisposed) return;
 
       sessionsPanel?.upsertSession(state.session);
-      sessionsPanel?.setSessionRunStatus(state.session.id, state.status);
+      // Background work outlives the turn, so it names the row when present.
+      sessionsPanel?.setSessionRunStatus(
+        state.session.id,
+        state.status,
+        state.backgroundTasks.length > 0 ? describeRunActivity(state) : null,
+      );
 
       if (detailsPanel?.viewedSession?.id === state.session.id) {
         detailsPanel.viewedSession = state.session;
@@ -345,6 +350,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   appServerClient.setLiveConversationHandler?.((event) => {
     if (!isDisposed) detailsPanel?.applyLiveEvent(event);
+  });
+
+  appServerClient.setBackgroundActivityHandler?.((event) => {
+    if (!isDisposed) sessionRunController.setBackgroundTasks(event.sessionId, event.tasks);
   });
 
   appServerClient.setModeNoticeHandler?.((message) => {
@@ -405,7 +414,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!detailsPanel) return;
 
     const state = sessionId ? sessionRunController.getState(sessionId) : null;
-    detailsPanel.thinkingSessionId = state?.busy ? sessionId! : null;
+    // Work the turn left running keeps the row up, retitled to say what it is.
+    const activity = describeRunActivity(state);
+    detailsPanel.thinkingLabel = activity ?? "";
+    detailsPanel.thinkingSessionId = activity ? sessionId! : null;
     detailsPanel.interruptedSessionId = state?.status === "interrupted" ? sessionId! : null;
     detailsPanel.pendingUserPrompt = state?.pendingPrompt ?? null;
   }
@@ -896,6 +908,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     // Detached before disposal so no in-flight request reaches a dead modal.
     appServerClient.setToolPermissionHandler?.(null);
     appServerClient.setModeNoticeHandler?.(null);
+    appServerClient.setBackgroundActivityHandler?.(null);
     toolApprovalController.dispose();
     unsubscribeModal();
     appServerClient.dispose();

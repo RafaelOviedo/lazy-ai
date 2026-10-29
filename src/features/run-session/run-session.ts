@@ -1,4 +1,4 @@
-import type { ProviderRuntimeClient, ToolPermissionHandler } from "../../entities/provider/index.js";
+import type { BackgroundTask, ProviderRuntimeClient, ToolPermissionHandler } from "../../entities/provider/index.js";
 import type { SessionSummary } from "../../entities/session/index.js";
 
 export type PendingSessionPrompt = {
@@ -15,7 +15,33 @@ export type SessionRunState = {
   status: SessionRunStatus;
   busy: boolean;
   pendingPrompt: PendingSessionPrompt | null;
+  /**
+   * Work the provider is still running for this session. It outlives the turn
+   * that spawned it, so this is tracked separately from `busy` rather than
+   * folded into it: a session with sub-agents still working accepts a new
+   * prompt, it just is not idle.
+   */
+  backgroundTasks: BackgroundTask[];
 };
+
+/**
+ * Names what a session is doing right now, or null when it is idle. Background
+ * work is named ahead of "Thinking..." because it is the part a finished turn
+ * would otherwise hide.
+ */
+export function describeRunActivity(state: SessionRunState | null): string | null {
+  if (!state) return null;
+
+  const hasSubAgents = state.backgroundTasks.some((task) => task.kind === "subAgent");
+  const hasTerminals = state.backgroundTasks.some((task) => task.kind === "terminal");
+
+  if (hasSubAgents && hasTerminals) return "Sub-agents and terminal tasks are working...";
+  if (hasSubAgents) return "Sub-agents are working...";
+  if (hasTerminals) return "Terminal tasks in process...";
+  if (state.backgroundTasks.length > 0) return "Background tasks are working...";
+
+  return state.busy ? "Thinking..." : null;
+}
 
 type Run = SessionRunState & {
   turnId: string | null;
@@ -51,8 +77,8 @@ export function createSessionRunController(options: Options) {
 
   function publish(run: Run): void {
     if (!isCurrent(run)) return;
-    const { session, threadId, status, busy, pendingPrompt } = run;
-    options.onChange({ session, threadId, status, busy, pendingPrompt });
+    const { session, threadId, status, busy, pendingPrompt, backgroundTasks } = run;
+    options.onChange({ session, threadId, status, busy, pendingPrompt, backgroundTasks });
   }
 
   function stopPolling(run: Run): void {
@@ -111,6 +137,9 @@ export function createSessionRunController(options: Options) {
       pendingPrompt: { sessionId: session.id, submittedAt: new Date().toISOString(), text },
       turnId: null, interruptRequested: false, interrupting: false,
       approvals: 0, polling: false, timer: null,
+      // A new turn does not end work the previous one left running, and the
+      // provider only re-reports the set when it changes.
+      backgroundTasks: runs.get(session.id)?.backgroundTasks ?? [],
     };
     runs.set(session.id, run);
     publish(run);
@@ -205,6 +234,20 @@ export function createSessionRunController(options: Options) {
     runs.delete(sessionId);
   }
 
+  /**
+   * Replaces what the provider says is still running for one session. Providers
+   * key these by thread id on sessions whose two ids differ.
+   */
+  function setBackgroundTasks(sessionId: string, tasks: BackgroundTask[]): void {
+    const run = runs.get(sessionId) ?? [...runs.values()].find((candidate) => candidate.threadId === sessionId);
+
+    if (!run || !isCurrent(run)) return;
+    if (run.backgroundTasks.length === 0 && tasks.length === 0) return;
+
+    run.backgroundTasks = tasks;
+    publish(run);
+  }
+
   function isBusy(sessionId: string): boolean {
     return runs.get(sessionId)?.busy ?? false;
   }
@@ -259,6 +302,7 @@ export function createSessionRunController(options: Options) {
     hasOngoingTurn,
     interruptSession,
     requestToolPermission,
+    setBackgroundTasks,
     dispose,
     promptSession: runTurn
   };
