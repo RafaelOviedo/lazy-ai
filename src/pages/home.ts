@@ -312,11 +312,13 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       if (isDisposed) return;
 
       sessionsPanel?.upsertSession(state.session);
-      // Background work outlives the turn, so it names the row when present.
+      // While the turn is in flight the run status already reads correctly; the
+      // override is for after it settles, when work carries on without it. The
+      // list shows only the first strand, the details panel shows them all.
       sessionsPanel?.setSessionRunStatus(
         state.session.id,
         state.status,
-        state.backgroundTasks.length > 0 ? describeRunActivity(state) : null,
+        state.busy ? null : describeRunActivity(state)[0] ?? null,
       );
 
       if (detailsPanel?.viewedSession?.id === state.session.id) {
@@ -354,6 +356,10 @@ export function renderHome({ document, projectPath, window }: PageProps) {
 
   appServerClient.setBackgroundActivityHandler?.((event) => {
     if (!isDisposed) sessionRunController.setBackgroundTasks(event.sessionId, event.tasks);
+  });
+
+  appServerClient.setSessionStateHandler?.((event) => {
+    if (!isDisposed) sessionRunController.setProviderState(event.sessionId, event.state);
   });
 
   appServerClient.setModeNoticeHandler?.((message) => {
@@ -414,10 +420,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (!detailsPanel) return;
 
     const state = sessionId ? sessionRunController.getState(sessionId) : null;
-    // Work the turn left running keeps the row up, retitled to say what it is.
+    // Concurrent strands of work are shown together on the one pinned row the
+    // status bar has room for, rather than one of them masking the other.
     const activity = describeRunActivity(state);
-    detailsPanel.thinkingLabel = activity ?? "";
-    detailsPanel.thinkingSessionId = activity ? sessionId! : null;
+    detailsPanel.thinkingLabel = activity.join(" · ");
+    detailsPanel.thinkingSessionId = activity.length > 0 ? sessionId! : null;
     detailsPanel.interruptedSessionId = state?.status === "interrupted" ? sessionId! : null;
     detailsPanel.pendingUserPrompt = state?.pendingPrompt ?? null;
   }
@@ -909,6 +916,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     appServerClient.setToolPermissionHandler?.(null);
     appServerClient.setModeNoticeHandler?.(null);
     appServerClient.setBackgroundActivityHandler?.(null);
+    appServerClient.setSessionStateHandler?.(null);
     toolApprovalController.dispose();
     unsubscribeModal();
     appServerClient.dispose();

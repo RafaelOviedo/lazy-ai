@@ -88,7 +88,8 @@ export type CodexItemNotification = {
 };
 
 export type CodexThreadStatusChangedNotification = {
-  status?: { type?: string };
+  /** `active` carries flags naming what it is blocked on, if anything. */
+  status?: { type?: string; activeFlags?: string[] | null };
   threadId?: string;
 };
 

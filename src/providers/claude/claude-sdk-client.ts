@@ -24,6 +24,8 @@ import type {
   BackgroundTaskKind,
   LiveConversationHandler,
   ProviderRuntimeClient,
+  ProviderSessionState,
+  SessionStateHandler,
   ToolPermissionHandler,
 } from "../../entities/provider/index.js";
 import type { ClaudeSdkClientOptions } from "./types.js";
@@ -127,6 +129,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   private toolPermissionHandler: ToolPermissionHandler | null = null;
   private liveConversationHandler: LiveConversationHandler | null = null;
   private backgroundActivityHandler: BackgroundActivityHandler | null = null;
+  private sessionStateHandler: SessionStateHandler | null = null;
   private isDisposed = false;
 
   constructor(options: ClaudeSdkClientOptions = {}, private readonly createQuery: typeof query = query) {
@@ -179,6 +182,10 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   setBackgroundActivityHandler(handler: BackgroundActivityHandler | null): void {
     this.backgroundActivityHandler = handler;
+  }
+
+  setSessionStateHandler(handler: SessionStateHandler | null): void {
+    this.sessionStateHandler = handler;
   }
 
   /**
@@ -356,6 +363,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     this.toolPermissionHandler = null;
     this.liveConversationHandler = null;
     this.backgroundActivityHandler = null;
+    this.sessionStateHandler = null;
 
     for (const session of this.sessions.values()) {
       this.closeSession(session, new Error("Claude Code client disposed."));
@@ -465,6 +473,10 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
           this.emitBackgroundActivity(session, message.tasks);
           continue;
         }
+        if (message.type === "system" && message.subtype === "session_state_changed") {
+          this.emitSessionState(session, message.state);
+          continue;
+        }
         if (message.type === "result") {
           stream.text = "";
           this.recordTurnCompletion(session, message);
@@ -491,6 +503,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       session.input = null;
       session.query = null;
       this.emitBackgroundActivity(session, []);
+      this.emitSessionState(session, "idle");
     }
   }
 
@@ -563,6 +576,26 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
             kind: readBackgroundTaskKind(task.task_type),
           })),
       });
+    } catch {
+      // A display listener must never take down the pump that settles turns.
+    }
+  }
+
+  /**
+   * Forwards Claude Code's own view of whether the session is finished. Its
+   * `idle` is the authoritative turn-over signal: a `result` can arrive while
+   * the session is still running, which is why the result alone is not enough
+   * to decide the session has stopped working.
+   */
+  private emitSessionState(session: LiveSession, state: "idle" | "running" | "requires_action"): void {
+    const handler = this.sessionStateHandler;
+
+    if (!handler) return;
+
+    const mapped: ProviderSessionState = state === "requires_action" ? "requiresAction" : state;
+
+    try {
+      handler({ sessionId: session.sessionId, state: mapped });
     } catch {
       // A display listener must never take down the pump that settles turns.
     }

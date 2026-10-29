@@ -9,6 +9,8 @@ import type { AgentQuestion } from "../../entities/provider/types.js";
 import type {
   BackgroundActivityHandler,
   BackgroundTask,
+  ProviderSessionState,
+  SessionStateHandler,
   ToolPermissionDecision,
   ToolPermissionHandler,
   ToolPermissionRequest,
@@ -194,6 +196,7 @@ export class CodexAppServerClient {
   private fileChangePathsByItemId = new Map<string, string[]>();
   private toolPermissionHandler: ToolPermissionHandler | null = null;
   private backgroundActivityHandler: BackgroundActivityHandler | null = null;
+  private sessionStateHandler: SessionStateHandler | null = null;
   /** Live sub-agent thread ids, keyed by the thread that spawned them. */
   private readonly subAgentThreadsByThread = new Map<string, Set<string>>();
   /** Last read of each thread's background terminals. */
@@ -287,6 +290,10 @@ export class CodexAppServerClient {
 
   setBackgroundActivityHandler(handler: BackgroundActivityHandler | null): void {
     this.backgroundActivityHandler = handler;
+  }
+
+  setSessionStateHandler(handler: SessionStateHandler | null): void {
+    this.sessionStateHandler = handler;
   }
 
   async resumeThread(threadId: string, cwd?: string): Promise<CodexAppServerResumeResult> {
@@ -458,6 +465,7 @@ export class CodexAppServerClient {
     this.reportedActivityByThread.clear();
     this.toolPermissionHandler = null;
     this.backgroundActivityHandler = null;
+    this.sessionStateHandler = null;
     this.fileChangePathsByItemId.clear();
 
     this.rejectPendingRequests(new Error("Codex app-server client disposed."));
@@ -904,7 +912,11 @@ export class CodexAppServerClient {
     const notification = params as CodexThreadStatusChangedNotification | undefined;
     const threadId = notification?.threadId;
 
-    if (!threadId || notification?.status?.type !== "idle") return;
+    if (!threadId) return;
+
+    this.emitSessionState(threadId, notification?.status);
+
+    if (notification?.status?.type !== "idle") return;
 
     for (const [parentThreadId, agents] of this.subAgentThreadsByThread) {
       if (!agents.delete(threadId)) continue;
@@ -968,6 +980,28 @@ export class CodexAppServerClient {
 
     // Keep watching while any are alive, since their exit is not announced.
     if (terminals.length > 0) this.scheduleBackgroundTerminalPoll(threadId);
+  }
+
+  /**
+   * Forwards Codex's own view of whether a thread is finished. Only `active`
+   * means work is outstanding; `notLoaded` and `systemError` are both states in
+   * which nothing is running, so they read as idle.
+   */
+  private emitSessionState(threadId: string, status: { type?: string; activeFlags?: string[] | null } | undefined): void {
+    const handler = this.sessionStateHandler;
+
+    if (!handler || status?.type === undefined) return;
+
+    const isBlocked = (status.activeFlags ?? []).length > 0;
+    const state: ProviderSessionState = status.type !== "active"
+      ? "idle"
+      : isBlocked ? "requiresAction" : "running";
+
+    try {
+      handler({ sessionId: threadId, state });
+    } catch {
+      // A display listener must never take down the notification reader.
+    }
   }
 
   /**

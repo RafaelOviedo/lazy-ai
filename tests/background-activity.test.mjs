@@ -76,22 +76,60 @@ test("Claude reports an emptied set when the provider drops its last background 
   client.dispose();
 });
 
-test("run activity names background work ahead of the turn's own state", () => {
-  const state = (busy, kinds) => ({
-    busy,
+test("Claude forwards its own idle and running states", async () => {
+  const client = claudeBackgroundHarness([
+    { type: "system", subtype: "session_state_changed", state: "running" },
+    { type: "system", subtype: "session_state_changed", state: "requires_action" },
+  ]);
+
+  const states = [];
+  client.setSessionStateHandler((event) => states.push(event.state));
+
+  const { threadId } = await client.startThread();
+  const { turnId } = await client.startTurn(threadId, "hi");
+  await client.waitForTurnCompletion(threadId, turnId);
+
+  // The result has arrived, yet the session never said it went idle.
+  assert.deepEqual(states, ["running", "requiresAction"]);
+
+  client.dispose();
+});
+
+test("run activity lists every strand of work at once", () => {
+  const state = ({ kinds = [], ...overrides }) => ({
+    busy: false,
+    status: "thinking",
+    providerState: null,
+    ...overrides,
     backgroundTasks: kinds.map((kind, index) => ({ description: "", id: String(index), kind })),
   });
 
-  assert.equal(describeRunActivity(null), null);
-  assert.equal(describeRunActivity(state(false, [])), null);
-  assert.equal(describeRunActivity(state(true, [])), "Thinking...");
+  assert.deepEqual(describeRunActivity(null), []);
+  assert.deepEqual(describeRunActivity(state({})), []);
+  assert.deepEqual(describeRunActivity(state({ busy: true })), ["Thinking..."]);
+  assert.deepEqual(describeRunActivity(state({ busy: true, status: "starting" })), ["Starting..."]);
 
-  // The point of the feature: a settled turn still reads as busy.
-  assert.equal(describeRunActivity(state(false, ["subAgent"])), "Sub-agents are working...");
-  assert.equal(describeRunActivity(state(false, ["terminal"])), "Terminal tasks in process...");
-  assert.equal(describeRunActivity(state(false, ["other"])), "Background tasks are working...");
-  assert.equal(
-    describeRunActivity(state(true, ["terminal", "subAgent"])),
-    "Sub-agents and terminal tasks are working...",
-  );
+  // A settled turn still reads as busy while its work carries on.
+  assert.deepEqual(describeRunActivity(state({ kinds: ["subAgent"] })), ["Sub-agents are working..."]);
+  assert.deepEqual(describeRunActivity(state({ kinds: ["terminal"] })), ["Terminal tasks in process..."]);
+  assert.deepEqual(describeRunActivity(state({ kinds: ["other"] })), ["Background tasks are working..."]);
+
+  // The model and its background work run at the same time, so both are named.
+  assert.deepEqual(describeRunActivity(state({ busy: true, kinds: ["terminal", "subAgent"] })), [
+    "Thinking...",
+    "Sub-agents are working...",
+    "Terminal tasks in process...",
+  ]);
+});
+
+test("run activity trusts a provider that is still running past the turn's result", () => {
+  const settled = { busy: false, status: "completed", backgroundTasks: [] };
+
+  // The case the spinner used to vanish on: Claude Code held the result back,
+  // or its background-agent loop has not exited, so the session is not idle.
+  assert.deepEqual(describeRunActivity({ ...settled, providerState: "running" }), ["Thinking..."]);
+  assert.deepEqual(describeRunActivity({ ...settled, providerState: "requiresAction" }), ["Thinking..."]);
+  assert.deepEqual(describeRunActivity({ ...settled, providerState: "idle" }), []);
+  // A provider that reports nothing leaves the turn's own result in charge.
+  assert.deepEqual(describeRunActivity({ ...settled, providerState: null }), []);
 });

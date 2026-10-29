@@ -92,6 +92,22 @@ export type BackgroundActivityEvent = {
 export type BackgroundActivityHandler = (event: BackgroundActivityEvent) => void;
 
 /**
+ * How much of a session's work is still outstanding, as the provider sees it.
+ * This is coarser than the app's own run status and, crucially, outlasts it: a
+ * provider can report a turn's result while still being `running`, because the
+ * result was held back for background work or a follow-up turn is already
+ * under way.
+ */
+export type ProviderSessionState = "idle" | "running" | "requiresAction";
+
+export type SessionStateEvent = {
+  sessionId: string;
+  state: ProviderSessionState;
+};
+
+export type SessionStateHandler = (event: SessionStateEvent) => void;
+
+/**
  * What a provider can actually be driven to do, rather than only read. Keeping
  * these separate stops one unimplemented action from gating the others.
  */
@@ -131,6 +147,12 @@ export interface ProviderRuntimeClient {
    * without it a turn's end is taken as the end of all its work.
    */
   setBackgroundActivityHandler?(handler: BackgroundActivityHandler | null): void;
+  /**
+   * Reports when the provider considers a session genuinely idle, rather than
+   * merely done with the turn the app asked for. Only implemented by providers
+   * that announce it; without it the turn's own result is all there is to go on.
+   */
+  setSessionStateHandler?(handler: SessionStateHandler | null): void;
   startThread(cwd?: string): Promise<{ sessionId: string; threadId: string }>;
   /** Returns the accepted turn's thinking level, or null if unresolved. */
   startTurn(threadId: string, prompt: string, cwd?: string): Promise<{ turnId: string; effort: string | null }>;

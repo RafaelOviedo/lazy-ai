@@ -1,4 +1,9 @@
-import type { BackgroundTask, ProviderRuntimeClient, ToolPermissionHandler } from "../../entities/provider/index.js";
+import type {
+  BackgroundTask,
+  ProviderRuntimeClient,
+  ProviderSessionState,
+  ToolPermissionHandler,
+} from "../../entities/provider/index.js";
 import type { SessionSummary } from "../../entities/session/index.js";
 
 export type PendingSessionPrompt = {
@@ -22,25 +27,50 @@ export type SessionRunState = {
    * prompt, it just is not idle.
    */
   backgroundTasks: BackgroundTask[];
+  /**
+   * The provider's own view of the session, or null when it does not report
+   * one. A provider can hand back a turn's result while still running, so this
+   * is what says the work is really over.
+   */
+  providerState: ProviderSessionState | null;
 };
 
 /**
- * Names what a session is doing right now, or null when it is idle. Background
- * work is named ahead of "Thinking..." because it is the part a finished turn
- * would otherwise hide.
+ * Names everything a session has in flight, most prominent first, or an empty
+ * list when it is idle. These are separate strands of work that run at the same
+ * time, so the model and its background tasks each get their own entry rather
+ * than one of them hiding the other.
  */
-export function describeRunActivity(state: SessionRunState | null): string | null {
-  if (!state) return null;
+export function describeRunActivity(state: SessionRunState | null): string[] {
+  if (!state) return [];
 
-  const hasSubAgents = state.backgroundTasks.some((task) => task.kind === "subAgent");
-  const hasTerminals = state.backgroundTasks.some((task) => task.kind === "terminal");
+  const segments: string[] = [];
+  const modelSegment = readModelActivity(state);
 
-  if (hasSubAgents && hasTerminals) return "Sub-agents and terminal tasks are working...";
-  if (hasSubAgents) return "Sub-agents are working...";
-  if (hasTerminals) return "Terminal tasks in process...";
-  if (state.backgroundTasks.length > 0) return "Background tasks are working...";
+  if (modelSegment) segments.push(modelSegment);
 
-  return state.busy ? "Thinking..." : null;
+  const tasks = state.backgroundTasks;
+
+  if (tasks.some((task) => task.kind === "subAgent")) segments.push("Sub-agents are working...");
+  if (tasks.some((task) => task.kind === "terminal")) segments.push("Terminal tasks in process...");
+  if (segments.length === 0 && tasks.length > 0) segments.push("Background tasks are working...");
+
+  return segments;
+}
+
+/**
+ * Says whether the model itself is still at work. `busy` only covers the turn
+ * the app is waiting on, so a provider that reports itself as still running is
+ * trusted beyond it: that is the case where the row used to disappear while
+ * Claude Code was holding a result back or looping over background agents.
+ */
+function readModelActivity(state: SessionRunState): string | null {
+  if (state.busy && state.status === "starting") return "Starting...";
+  if (state.busy) return "Thinking...";
+
+  return state.providerState === "running" || state.providerState === "requiresAction"
+    ? "Thinking..."
+    : null;
 }
 
 type Run = SessionRunState & {
@@ -77,8 +107,8 @@ export function createSessionRunController(options: Options) {
 
   function publish(run: Run): void {
     if (!isCurrent(run)) return;
-    const { session, threadId, status, busy, pendingPrompt, backgroundTasks } = run;
-    options.onChange({ session, threadId, status, busy, pendingPrompt, backgroundTasks });
+    const { session, threadId, status, busy, pendingPrompt, backgroundTasks, providerState } = run;
+    options.onChange({ session, threadId, status, busy, pendingPrompt, backgroundTasks, providerState });
   }
 
   function stopPolling(run: Run): void {
@@ -140,6 +170,7 @@ export function createSessionRunController(options: Options) {
       // A new turn does not end work the previous one left running, and the
       // provider only re-reports the set when it changes.
       backgroundTasks: runs.get(session.id)?.backgroundTasks ?? [],
+      providerState: runs.get(session.id)?.providerState ?? null,
     };
     runs.set(session.id, run);
     publish(run);
@@ -234,17 +265,33 @@ export function createSessionRunController(options: Options) {
     runs.delete(sessionId);
   }
 
-  /**
-   * Replaces what the provider says is still running for one session. Providers
-   * key these by thread id on sessions whose two ids differ.
-   */
-  function setBackgroundTasks(sessionId: string, tasks: BackgroundTask[]): void {
+  /** Providers key their reports by thread id on sessions whose two ids differ. */
+  function findRun(sessionId: string): Run | null {
     const run = runs.get(sessionId) ?? [...runs.values()].find((candidate) => candidate.threadId === sessionId);
 
-    if (!run || !isCurrent(run)) return;
+    return run && isCurrent(run) ? run : null;
+  }
+
+  /**
+   * Replaces what the provider says is still running for one session.
+   */
+  function setBackgroundTasks(sessionId: string, tasks: BackgroundTask[]): void {
+    const run = findRun(sessionId);
+
+    if (!run) return;
     if (run.backgroundTasks.length === 0 && tasks.length === 0) return;
 
     run.backgroundTasks = tasks;
+    publish(run);
+  }
+
+  /** Records the provider's own idle/running view for one session. */
+  function setProviderState(sessionId: string, providerState: ProviderSessionState): void {
+    const run = findRun(sessionId);
+
+    if (!run || run.providerState === providerState) return;
+
+    run.providerState = providerState;
     publish(run);
   }
 
@@ -303,6 +350,7 @@ export function createSessionRunController(options: Options) {
     interruptSession,
     requestToolPermission,
     setBackgroundTasks,
+    setProviderState,
     dispose,
     promptSession: runTurn
   };

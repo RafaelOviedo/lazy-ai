@@ -150,6 +150,27 @@ test("Codex re-reads terminals after a command execution and after a turn ends",
   client.dispose();
 });
 
+test("Codex maps thread status onto provider session state", () => {
+  const { client } = codexActivityHarness();
+  const states = [];
+
+  client.setSessionStateHandler((event) => states.push(event.state));
+
+  const report = (status) => client.handleNotification({
+    method: "thread/status/changed",
+    params: { threadId, status },
+  });
+
+  report({ type: "active", activeFlags: [] });
+  report({ type: "active", activeFlags: ["waitingOnApproval"] });
+  report({ type: "idle" });
+  // Neither of these is a state in which work is outstanding.
+  report({ type: "notLoaded" });
+  report({ type: "systemError" });
+
+  assert.deepEqual(states, ["running", "requiresAction", "idle", "idle", "idle"]);
+});
+
 test("Codex drops tracked work when the app-server exits", () => {
   const { client, events } = codexActivityHarness();
 
