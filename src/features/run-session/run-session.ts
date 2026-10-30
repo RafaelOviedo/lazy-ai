@@ -59,6 +59,22 @@ export function describeRunActivity(state: SessionRunState | null): string[] {
 }
 
 /**
+ * Says whether the provider reports work of its own past the turn the app is
+ * waiting on. Claude Code hands a result back while sub-agents and background
+ * shells carry on, so `busy` going false does not mean the session is done.
+ */
+export function hasWorkBeyondTurn(state: SessionRunState | null): boolean {
+  return state?.providerState === "running" || state?.providerState === "requiresAction";
+}
+
+/**
+ * Says whether anything at all is still running for the session, turn or not.
+ */
+function isSessionWorking(state: SessionRunState): boolean {
+  return state.busy || hasWorkBeyondTurn(state);
+}
+
+/**
  * Says whether the model itself is still at work. `busy` only covers the turn
  * the app is waiting on, so a provider that reports itself as still running is
  * trusted beyond it: that is the case where the row used to disappear while
@@ -68,9 +84,7 @@ function readModelActivity(state: SessionRunState): string | null {
   if (state.busy && state.status === "starting") return "Starting...";
   if (state.busy) return "Thinking...";
 
-  return state.providerState === "running" || state.providerState === "requiresAction"
-    ? "Thinking..."
-    : null;
+  return hasWorkBeyondTurn(state) ? "Thinking..." : null;
 }
 
 type Run = SessionRunState & {
@@ -313,8 +327,12 @@ export function createSessionRunController(options: Options) {
 
     const run = [...runs.values()].find((candidate) => candidate.threadId === request.sessionId || candidate.session.id === request.sessionId);
 
-    // A late request must not resurrect a completed/interrupted session.
-    if (run && (!run.busy || ["completed", "failed", "interrupted"].includes(run.status))) {
+    // A late request must not resurrect a session that has stopped, but a turn
+    // ending is not that: Claude Code hands its result back while sub-agents
+    // and background shells carry on, and the tool calls they make arrive after
+    // `busy` has gone. Denying those declined work the user never saw asked
+    // about. The provider's own state is what says the session is really over.
+    if (run && (!isSessionWorking(run) || run.status === "interrupted")) {
       return { behavior: "deny" } as const;
     }
 

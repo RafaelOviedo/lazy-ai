@@ -46,7 +46,7 @@ import { ensureModalDefined } from "../components/Modal/modal.js";
 import { useModal } from "../composables/useModal.js";
 import { ModalName } from "../shared/lib/modal/index.js";
 import { createSessionDeleteController } from "../features/delete-session/index.js";
-import { createSessionRunController, describeRunActivity } from "../features/run-session/index.js";
+import { createSessionRunController, describeRunActivity, hasWorkBeyondTurn } from "../features/run-session/index.js";
 import { createSessionResumeController } from "../features/resume-session/index.js";
 import { createToolApprovalController } from "../features/approve-tool-use/index.js";
 import { createUsageLimitController } from "../features/refresh-usage-limit/index.js";
@@ -327,6 +327,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       }
     },
     onTurnFinished: (sessionId, threadId) => {
+      // Queued calls can belong to work the turn leaves running behind it.
+      // Cancelling those declines tool calls the session is still waiting on,
+      // so the queue is only cleared once the provider reports itself done.
+      if (hasWorkBeyondTurn(sessionRunController.getState(sessionId))) return;
+
       toolApprovalController.cancelSessionRequests(threadId);
       if (sessionId !== threadId) toolApprovalController.cancelSessionRequests(sessionId);
     },
