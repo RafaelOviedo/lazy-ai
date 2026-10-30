@@ -31,6 +31,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private viewedSessionValue: SessionSummary | null = null;
     private pendingUserPromptValue: PendingSessionPrompt | null = null;
     private pendingUserPromptInitialMatchCount = 0;
+    /** The last optimistic prompt row the transcript took over, never shown again. */
+    private retiredUserPromptId: string | null = null;
     private thinkingSessionIdValue: string | null = null;
     private thinkingLabelValue = defaultThinkingLabel;
     private interruptedSessionIdValue: string | null = null;
@@ -151,13 +153,20 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
+      // The page re-reports the prompt for the rest of the turn, long after the
+      // transcript has taken it over; re-adding the stand-in row then would
+      // show the prompt twice.
+      if (value && this.getPendingUserPromptMessageId(value) === this.retiredUserPromptId) return;
+
       this.pendingUserPromptValue = value;
+      // Counted against the transcript alone: the merged list carries the
+      // optimistic row itself, which would otherwise look like a match.
       this.pendingUserPromptInitialMatchCount = value
-        ? this.countMatchingUserPromptMessages(this.messages, value.text)
+        ? this.countMatchingUserPromptMessages(this.transcriptMessages, value.text)
         : 0;
 
       if (this.isConnected) {
-        this.syncPendingUserPromptMarkup();
+        this.refreshLive();
       }
     }
 
@@ -260,11 +269,11 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         if (!this.loadError && this.renderedSessionId === sessionId && this.isSameTranscript(conversation.messages)) return;
 
         this.transcriptMessages = conversation.messages;
-        this.messages = this.mergeLiveMessages();
+        this.updateMessages();
         this.isLoading = false;
         this.loadError = null;
 
-        if (this.canReconcileExistingMarkup() && this.syncConversationMarkup(conversation.messages)) {
+        if (this.canReconcileExistingMarkup() && this.syncConversationMarkup()) {
           this.scrollToBottom();
           return;
         }
@@ -351,7 +360,15 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         return;
       }
 
-      this.messages = this.mergeLiveMessages();
+      const pendingUserPrompt = this.pendingUserPromptValue;
+
+      this.updateMessages();
+
+      // Retiring the optimistic row moves rows around, which this patch cannot do.
+      if (this.pendingUserPromptValue !== pendingUserPrompt) {
+        this.refreshLive();
+        return;
+      }
 
       const streamMessage = this.messages.find((message) => message.id === streamId);
 
@@ -376,10 +393,17 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private mergeLiveMessages(): ConversationMessage[] {
       const transcriptIds = new Set(this.transcriptMessages.map((message) => message.id));
-      const merged = [
-        ...this.transcriptMessages,
-        ...this.liveMessages.filter((message) => !transcriptIds.has(message.id)),
-      ];
+      const merged: ConversationMessage[] = [...this.transcriptMessages];
+      const pendingUserPromptMessage = this.getPendingUserPromptMessage();
+
+      // The optimistic prompt row belongs to the turn it started: below
+      // everything already persisted, and above the reply streaming back. Left
+      // trailing the list, it read as the newest message of the conversation.
+      if (pendingUserPromptMessage) {
+        merged.push(pendingUserPromptMessage);
+      }
+
+      merged.push(...this.liveMessages.filter((message) => !transcriptIds.has(message.id)));
 
       if (this.liveStreamText && this.viewedSessionValue) {
         merged.push({ id: this.getLiveStreamMessageId(this.viewedSessionValue.id), role: "assistant", text: this.liveStreamText });
@@ -388,15 +412,58 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       return merged;
     }
 
+    /**
+     * Rebuilds the rows on screen, retiring the optimistic prompt row once the
+     * transcript has caught up with it.
+     */
+    private updateMessages(): void {
+      if (this.pendingUserPromptValue && this.shouldClearPendingUserPrompt(this.transcriptMessages)) {
+        this.retiredUserPromptId = this.getPendingUserPromptMessageId(this.pendingUserPromptValue);
+        this.pendingUserPromptValue = null;
+      }
+
+      this.messages = this.mergeLiveMessages();
+    }
+
+    /**
+     * Builds the stand-in row for a prompt the transcript has not recorded yet.
+     */
+    private getPendingUserPromptMessage(): ConversationMessage | null {
+      const pendingUserPrompt = this.pendingUserPromptValue;
+
+      if (!pendingUserPrompt || !this.isViewedSessionPendingPrompt()) return null;
+
+      return {
+        id: this.getPendingUserPromptMessageId(pendingUserPrompt),
+        role: "user",
+        text: pendingUserPrompt.text,
+      };
+    }
+
+    /** Keyed by submission, so a new prompt never reuses the previous row. */
+    private getPendingUserPromptMessageId(pendingUserPrompt: PendingSessionPrompt): string {
+      return `pending-prompt:${pendingUserPrompt.sessionId}:${pendingUserPrompt.submittedAt}`;
+    }
+
+    /**
+     * Returns whether a row stands in for the prompt awaiting persistence.
+     */
+    private isPendingUserPromptMessage(message: ConversationMessage): boolean {
+      return Boolean(
+        this.pendingUserPromptValue
+        && message.id === this.getPendingUserPromptMessageId(this.pendingUserPromptValue),
+      );
+    }
+
     private refreshLive(): void {
       this.cancelLiveRefresh();
 
       // A pending load or error view owns the screen; the next load merges live rows itself.
       if (!this.isConnected || this.isLoading || this.loadError || !this.viewedSessionValue) return;
 
-      this.messages = this.mergeLiveMessages();
+      this.updateMessages();
 
-      if (this.canReconcileExistingMarkup() && this.syncConversationMarkup(this.messages)) {
+      if (this.canReconcileExistingMarkup() && this.syncConversationMarkup()) {
         this.scrollToBottom();
         return;
       }
@@ -646,8 +713,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      */
     private renderStatusRowsMarkup(): string {
       return `<div data-status-rows="true">${
-        this.isViewedSessionPendingPrompt() ? this.renderPendingUserPromptMarkup() : ""
-      }${
         this.isViewedSessionInterrupted() ? this.renderInterruptedMarkup() : ""
       }</div>`;
     }
@@ -674,22 +739,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Builds the optimistic user prompt row.
-     */
-    private renderPendingUserPromptMarkup(): string {
-      if (!this.pendingUserPromptValue) return "";
-
-      return `
-        <div class="details-panel__message details-panel__message--pending" data-pending-user-prompt="true">
-          <div class="details-panel__message-header">
-            <span class="details-panel__message-role details-panel__message-role--user">You</span>
-          </div>
-          <div class="details-panel__message-text">${escapeHtml(this.pendingUserPromptValue.text)}</div>
-        </div>
-      `;
-    }
-
-    /**
      * Builds the pending assistant response row shown in the pinned status bar.
      */
     private renderThinkingMarkup(): string {
@@ -711,6 +760,9 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       const loadVersion = ++this.loadVersion;
 
       this.loadError = null;
+      // Opening another conversation retires nothing: that row belonged to the
+      // session being left behind.
+      this.retiredUserPromptId = null;
       this.resetLiveState();
 
       if (!viewedSession) {
@@ -749,7 +801,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         if (loadVersion !== this.loadVersion) return;
 
         this.transcriptMessages = conversation.messages;
-        this.messages = this.mergeLiveMessages();
+        this.updateMessages();
         this.isLoading = false;
         this.loadError = null;
 
@@ -816,8 +868,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     private renderMessageMarkup(message: ConversationMessage): string {
+      const isPendingUserPrompt = this.isPendingUserPromptMessage(message);
+
       return `
-        <div class="details-panel__message" data-conversation-message="true" data-message-id="${escapeHtml(message.id)}">
+        <div class="details-panel__message${isPendingUserPrompt ? " details-panel__message--pending" : ""}" data-conversation-message="true" data-message-id="${escapeHtml(message.id)}"${isPendingUserPrompt ? ` data-pending-user-prompt="true"` : ""}>
           ${this.renderMessageInnerMarkup(message)}
         </div>
       `;
@@ -855,9 +909,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Appends or updates rendered message rows for a same-session refresh.
+     * Adds, updates and removes rendered message rows for a same-session
+     * refresh, keeping them in the order the conversation has them.
      */
-    private syncConversationMarkup(messages: ConversationMessage[]): boolean {
+    private syncConversationMarkup(): boolean {
       if (!this.viewedSessionValue || this.renderedSessionId !== this.viewedSessionValue.id) return false;
 
       const messagesContainer = this.getMessagesContainer();
@@ -866,9 +921,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       this.syncTitleMarkup();
 
-      if (this.shouldClearPendingUserPrompt(messages)) {
-        this.pendingUserPromptValue = null;
-      }
+      const messages = this.messages;
 
       // A live row is replaced by its transcript twin or dropped once the turn
       // settles, so rows can now disappear as well as appear.
@@ -888,9 +941,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         this.renderedMessageFingerprints.delete(renderedId);
       }
 
-      let tailGroup = this.getTailMessageGroup(messagesContainer);
+      // Walked from the newest row backwards, so each new row knows which row
+      // follows it and can go in above it. Appending every new row to the tail
+      // put a prompt the transcript only now reports under the reply to it.
+      let followingMessage: HTMLElement | null = null;
 
-      for (const message of messages) {
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
         const fingerprint = this.getMessageFingerprint(message);
         const existingMessage = messageElements.get(message.id);
 
@@ -898,72 +955,53 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
           if (this.renderedMessageFingerprints.get(message.id) !== fingerprint) {
             existingMessage.innerHTML = this.renderMessageInnerMarkup(message);
           }
+
+          followingMessage = existingMessage;
         } else {
-          // The tail group holds only rows, so its child count is its row count.
-          if (!tailGroup || tailGroup.childElementCount >= messageGroupSize) {
-            tailGroup = this.appendMessageGroup(messagesContainer, tailGroup);
+          const insertedMessage = this.insertMessageMarkup(messagesContainer, message, followingMessage);
+
+          if (insertedMessage) {
+            messageElements.set(message.id, insertedMessage);
+            followingMessage = insertedMessage;
           }
-
-          tailGroup?.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
-
-          const insertedMessage = tailGroup?.lastElementChild;
-
-          if (insertedMessage) messageElements.set(message.id, insertedMessage as HTMLElement);
         }
 
         this.renderedMessageFingerprints.set(message.id, fingerprint);
       }
 
-      if (messages.length > 0 || this.isViewedSessionPendingPrompt() || this.isViewedSessionThinking()) {
+      if (messages.length > 0 || this.isViewedSessionThinking()) {
         this.removeEmptyConversationMarkup();
       }
 
-      this.syncPendingUserPromptMarkup();
       this.syncThinkingMarkup();
       this.syncInterruptedMarkup();
       return true;
     }
 
     /**
-     * Adds or removes the pending user prompt row in place.
+     * Places one new row: above the row that follows it, or at the end of the
+     * tail group when nothing on screen comes after it.
      */
-    private syncPendingUserPromptMarkup(): void {
-      if (!this.viewedSessionValue || this.isLoading || this.loadError) {
-        this.removePendingUserPromptMarkup();
-        return;
+    private insertMessageMarkup(
+      messagesContainer: HTMLElement,
+      message: ConversationMessage,
+      followingMessage: HTMLElement | null,
+    ): HTMLElement | null {
+      if (followingMessage) {
+        followingMessage.insertAdjacentHTML("beforebegin", this.renderMessageMarkup(message));
+        return followingMessage.previousElementSibling as HTMLElement | null;
       }
 
-      const statusRowsContainer = this.getStatusRowsContainer();
+      let tailGroup = this.getTailMessageGroup(messagesContainer);
 
-      if (!statusRowsContainer) {
-        this.render();
-        return;
+      // The tail group holds only rows, so its child count is its row count.
+      if (!tailGroup || tailGroup.childElementCount >= messageGroupSize) {
+        tailGroup = this.appendMessageGroup(messagesContainer, tailGroup);
       }
 
-      const existingPendingPrompt = this.getPendingUserPromptElement();
+      tailGroup?.insertAdjacentHTML("beforeend", this.renderMessageMarkup(message));
 
-      if (!this.isViewedSessionPendingPrompt()) {
-        this.removePendingUserPromptMarkup();
-
-        if (this.messages.length === 0 && !this.isViewedSessionThinking() && !this.isViewedSessionInterrupted()) {
-          this.showEmptyConversationMarkup();
-        }
-
-        return;
-      }
-
-      if (this.shouldClearPendingUserPrompt(this.messages)) {
-        this.pendingUserPromptValue = null;
-        this.removePendingUserPromptMarkup();
-        return;
-      }
-
-      this.removeEmptyConversationMarkup();
-
-      if (!existingPendingPrompt) {
-        statusRowsContainer.insertAdjacentHTML("afterbegin", this.renderPendingUserPromptMarkup());
-        this.scrollToBottom();
-      }
+      return (tailGroup?.lastElementChild as HTMLElement | null) ?? null;
     }
 
     /**
@@ -1208,13 +1246,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Finds the optimistic user prompt row.
-     */
-    private getPendingUserPromptElement(): HTMLElement | null {
-      return this.querySelector<HTMLElement>("[data-pending-user-prompt='true']");
-    }
-
-    /**
      * Removes the pending assistant row when it is present.
      */
     private removeThinkingMarkup(): void {
@@ -1235,17 +1266,6 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       if (interruptedElement?.parentNode) {
         interruptedElement.parentNode.removeChild(interruptedElement);
-      }
-    }
-
-    /**
-     * Removes the optimistic user prompt row when it is present.
-     */
-    private removePendingUserPromptMarkup(): void {
-      const pendingPromptElement = this.getPendingUserPromptElement();
-
-      if (pendingPromptElement?.parentNode) {
-        pendingPromptElement.parentNode.removeChild(pendingPromptElement);
       }
     }
 
@@ -1355,32 +1375,22 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     }
 
     /**
-     * Keeps the latest message visible when a conversation is loaded.
+     * Keeps the end of the transcript visible as rows are added or grow.
+     *
+     * The scroll box is moved directly rather than through `scrollIntoView`:
+     * TermDOM ignores the alignment option and always makes the smallest move
+     * that reveals the element, so a reply taller than the panel was pulled up
+     * to its first line, then back down to its last, on every streamed update.
+     * It also walks every scrolling ancestor, including the `overflow: hidden`
+     * ones around the panel, which shifted the layout beside it.
      */
     private scrollToBottom(): void {
-      const lastMessage = [...this.querySelectorAll<HTMLElement>("[data-conversation-message='true']")].at(-1);
-      const pendingUserPrompt = this.getPendingUserPromptElement();
-      const interruptedElement = this.getInterruptedElement();
       const content = this.querySelector<HTMLElement>(".details-panel__content");
 
-      if (interruptedElement) {
-        interruptedElement.scrollIntoView({ block: "end" });
-        return;
-      }
+      if (!content) return;
 
-      if (pendingUserPrompt) {
-        pendingUserPrompt.scrollIntoView({ block: "end" });
-        return;
-      }
-
-      if (lastMessage) {
-        lastMessage.scrollIntoView({ block: "end" });
-        return;
-      }
-
-      if (content) {
-        content.scrollTop = content.scrollHeight;
-      }
+      // Assigning past the end clamps to the last scroll position available.
+      content.scrollTop = content.scrollHeight;
     }
 
     /**
