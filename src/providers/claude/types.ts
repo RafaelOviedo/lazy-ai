@@ -49,6 +49,8 @@ export type ClaudeTranscriptRecord = {
   isSidechain?: boolean;
   aiTitle?: string;
   message?: ClaudeTranscriptMessage;
+  /** What a tool returned, in the tool's own shape; a string when it failed. */
+  toolUseResult?: unknown;
 };
 
 export type ClaudeSessionContext = {

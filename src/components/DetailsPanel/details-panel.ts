@@ -1,6 +1,7 @@
 import { escapeHtml, renderWithStableStyle } from "../../shared/lib/html/index.js";
 import { renderMarkdown } from "../../shared/lib/markdown/index.js";
-import type { ConversationMessage, SessionReader, SessionSummary } from "../../entities/session/index.js";
+import { countFileEditLines } from "../../entities/session/index.js";
+import type { ConversationMessage, FileEdit, SessionReader, SessionSummary } from "../../entities/session/index.js";
 import type { LiveConversationEvent } from "../../entities/provider/index.js";
 import type { PendingSessionPrompt } from "../../features/run-session/index.js";
 import type { TermWindow } from "./types.js";
@@ -23,6 +24,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
   // Rows therefore go into small groups, each nested as the last child of the
   // one before, so appending only ever touches the short tail group.
   const messageGroupSize = 25;
+  const maxDiffLinesPerEdit = 40;
+  // Layout cost grows with every row on screen, so a long session opens on its
+  // latest stretch rather than its whole history.
+  const maxRenderedMessages = 100;
 
   /**
    * Renders the explicitly opened conversation.
@@ -41,6 +46,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /** Last transcript read; `messages` is this plus whatever is still only live. */
     private transcriptMessages: ConversationMessage[] = [];
     private liveMessages: ConversationMessage[] = [];
+    /** Older rows left off screen by `maxRenderedMessages`. */
+    private earlierMessageCount = 0;
     private liveStreamText = "";
     private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     private isLoading = false;
@@ -422,7 +429,10 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         this.pendingUserPromptValue = null;
       }
 
-      this.messages = this.mergeLiveMessages();
+      const merged = this.mergeLiveMessages();
+
+      this.earlierMessageCount = Math.max(0, merged.length - maxRenderedMessages);
+      this.messages = merged.slice(-maxRenderedMessages);
     }
 
     /**
@@ -574,6 +584,49 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
             color: #43B53E;
           }
 
+          .details-panel__message-role--edit {
+            color: #d7ba7d;
+          }
+
+          .details-diff {
+            margin-bottom: 1px;
+          }
+
+          .details-diff__file {
+            color: #8aa4bf;
+          }
+
+          .details-diff__path {
+            color: #ffffff;
+            font-weight: bold;
+          }
+
+          .details-diff__count--added {
+            color: #43B53E;
+          }
+
+          .details-diff__count--removed {
+            color: #e06c75;
+          }
+
+          .details-diff__line {
+            color: #d7ecff;
+            white-space: pre-wrap;
+          }
+
+          .details-diff__line--added {
+            background-color: #0f3d14;
+          }
+
+          .details-diff__line--removed {
+            background-color: #4d1214;
+          }
+
+          .details-diff__gap {
+            color: #8aa4bf;
+            white-space: pre-wrap;
+          }
+
           .details-panel__message--pending {
             border-top-color: #5fafff;
           }
@@ -703,8 +756,27 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
 
       return `
         <div class="details-panel__session-title">${escapeHtml(this.viewedSessionValue.title)}</div>
+        <div class="details-panel__muted" data-earlier-messages="true">${escapeHtml(this.formatEarlierMessagesNote())}</div>
         <div data-conversation-messages="true">${this.renderMessageGroupsMarkup(this.messages)}${this.renderStatusRowsMarkup()}</div>
       `;
+    }
+
+    private formatEarlierMessagesNote(): string {
+      const count = this.earlierMessageCount;
+
+      return count > 0 ? `… ${count} earlier message${count === 1 ? "" : "s"} not shown` : "";
+    }
+
+    /**
+     * Keeps the note about rows left off screen current as new ones push older ones out.
+     */
+    private syncEarlierMessagesMarkup(): void {
+      const note = this.querySelector<HTMLElement>("[data-earlier-messages='true']");
+      const text = this.formatEarlierMessagesNote();
+
+      if (note && note.textContent !== text) {
+        note.textContent = text;
+      }
     }
 
     /**
@@ -881,8 +953,18 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
      * Builds the content inside one transcript row.
      */
     private renderMessageInnerMarkup(message: ConversationMessage): string {
-      const roleLabel = this.formatRoleLabel(message.role);
       const timestamp = this.formatTimestamp(message.timestamp);
+
+      if (message.fileEdits?.length) {
+        return `
+          <div class="details-panel__message-header">
+            <span class="details-panel__message-role details-panel__message-role--edit">Edit</span>${timestamp ? ` · ${escapeHtml(timestamp)}` : ""}
+          </div>
+          <div class="details-panel__message-text">${message.fileEdits.map((edit) => this.renderFileEditMarkup(edit)).join("")}</div>
+        `;
+      }
+
+      const roleLabel = this.formatRoleLabel(message.role);
 
       return `
         <div class="details-panel__message-header">
@@ -890,6 +972,94 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
         </div>
         <div class="details-panel__message-text">${this.renderMessageTextMarkup(message)}</div>
       `;
+    }
+
+    /**
+     * Draws one changed file the way the providers' own terminals do: a summary
+     * line, then its hunks with removed lines on red and added lines on green.
+     * Long changes are cut short so one edit cannot bury the conversation.
+     */
+    private renderFileEditMarkup(edit: FileEdit): string {
+      const path = escapeHtml(this.formatProjectRelativePath(edit.path));
+
+      if (edit.kind === "delete") {
+        return `<div class="details-diff"><div class="details-diff__file">Deleted <span class="details-diff__path">${path}</span></div></div>`;
+      }
+
+      const { added, removed } = countFileEditLines(edit);
+      const gutterWidth = this.getDiffGutterWidth(edit);
+      const lineRows: string[] = [];
+      let totalLines = 0;
+
+      edit.hunks.forEach((hunk, hunkIndex) => {
+        let oldLine = hunk.oldStart;
+        let newLine = hunk.newStart;
+
+        if (hunkIndex > 0 && totalLines < maxDiffLinesPerEdit) {
+          lineRows.push(`<div class="details-diff__gap">${" ".repeat(gutterWidth)}⋯</div>`);
+        }
+
+        for (const line of hunk.lines) {
+          const marker = line[0] ?? " ";
+          const lineNumber = marker === "-" ? oldLine : newLine;
+
+          if (marker !== "+" && oldLine !== undefined) oldLine += 1;
+          if (marker !== "-" && newLine !== undefined) newLine += 1;
+          totalLines += 1;
+
+          if (totalLines > maxDiffLinesPerEdit) continue;
+
+          const gutter = gutterWidth ? `${lineNumber === undefined ? "" : lineNumber}`.padStart(gutterWidth) + " " : "";
+          const modifier = marker === "+" ? " details-diff__line--added" : marker === "-" ? " details-diff__line--removed" : "";
+
+          lineRows.push(`<div class="details-diff__line${modifier}">${escapeHtml(`${gutter}${marker} ${line.slice(1).replace(/\t/g, "    ")}`)}</div>`);
+        }
+      });
+
+      const hiddenLines = totalLines - maxDiffLinesPerEdit;
+
+      if (hiddenLines > 0) {
+        lineRows.push(`<div class="details-diff__gap">… ${hiddenLines} more line${hiddenLines === 1 ? "" : "s"}</div>`);
+      }
+
+      return `
+        <div class="details-diff">
+          <div class="details-diff__file">${edit.kind === "create" ? "Created" : "Updated"} <span class="details-diff__path">${path}</span> <span class="details-diff__count--added">+${added}</span> <span class="details-diff__count--removed">-${removed}</span></div>
+          ${lineRows.join("")}
+        </div>
+      `;
+    }
+
+    /**
+     * Sizes the line-number column for the largest number an edit shows; zero
+     * when the provider recorded no line numbers.
+     */
+    private getDiffGutterWidth(edit: FileEdit): number {
+      let largest = 0;
+
+      for (const hunk of edit.hunks) {
+        largest = Math.max(largest, (hunk.oldStart ?? 0) + hunk.lines.length, (hunk.newStart ?? 0) + hunk.lines.length);
+      }
+
+      return edit.hunks.some((hunk) => hunk.newStart !== undefined) ? String(largest).length : 0;
+    }
+
+    /**
+     * Shortens paths inside the session's project to their project-relative form.
+     */
+    private formatProjectRelativePath(path: string): string {
+      const projectPath = this.viewedSessionValue?.projectPath;
+
+      if (!projectPath) return path;
+
+      const normalize = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "");
+      const normalizedPath = normalize(path);
+      const prefix = `${normalize(projectPath)}/`;
+      const isInsideProject = process.platform === "win32"
+        ? normalizedPath.toLowerCase().startsWith(prefix.toLowerCase())
+        : normalizedPath.startsWith(prefix);
+
+      return isInsideProject ? normalizedPath.slice(prefix.length) : path;
     }
 
     /**
@@ -972,6 +1142,8 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       if (messages.length > 0 || this.isViewedSessionThinking()) {
         this.removeEmptyConversationMarkup();
       }
+
+      this.syncEarlierMessagesMarkup();
 
       this.syncThinkingMarkup();
       this.syncInterruptedMarkup();

@@ -6,7 +6,16 @@ import { IncrementalJsonlReader } from "../../shared/lib/jsonl/index.js";
 import { isSameProjectPath } from "../../shared/lib/paths/index.js";
 
 import type { UsageLimitSnapshot } from "../../entities/provider/index.js";
-import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
+import { describeFileEdit } from "../../entities/session/index.js";
+import type {
+  ConversationMessage,
+  ConversationRole,
+  DiffHunk,
+  FileEdit,
+  SessionConversation,
+  SessionReader,
+  SessionSummary,
+} from "../../entities/session/index.js";
 import type {
   ClaudeSessionContext,
   ClaudeSessionRepositoryOptions,
@@ -204,7 +213,7 @@ export class ClaudeSessionRepository implements SessionReader {
         if (record.type === "user" && !firstUserPrompt) {
           const message = this.readConversationMessage(record, "");
 
-          if (message) {
+          if (message?.role === "user") {
             firstUserPrompt = this.formatSessionTitle(message.text);
           }
         }
@@ -268,6 +277,20 @@ export class ClaudeSessionRepository implements SessionReader {
   private readConversationMessage(record: ClaudeTranscriptRecord, fallbackId: string): ConversationMessage | null {
     if (record.isMeta || record.isSidechain) return null;
 
+    // A file tool's result comes back as a user record, but the change is the
+    // assistant's doing, so it is shown on that side of the conversation.
+    const fileEdit = record.type === "user" ? this.readFileEdit(record.toolUseResult) : null;
+
+    if (fileEdit) {
+      return {
+        id: record.uuid ?? fallbackId,
+        role: "assistant",
+        text: describeFileEdit(fileEdit),
+        timestamp: record.timestamp,
+        fileEdits: [fileEdit],
+      };
+    }
+
     const role = this.readConversationRole(record.type);
 
     if (!role || !record.message) return null;
@@ -283,6 +306,37 @@ export class ClaudeSessionRepository implements SessionReader {
       text,
       timestamp: record.timestamp,
     };
+  }
+
+  /**
+   * Reads the change an Edit, MultiEdit or Write call made. Claude Code stores
+   * the same hunks it draws itself; a new file has none, only its content.
+   */
+  private readFileEdit(result: unknown): FileEdit | null {
+    if (!this.isObject(result) || typeof result.filePath !== "string" || !Array.isArray(result.structuredPatch)) {
+      return null;
+    }
+
+    if (result.type === "create") {
+      const content = typeof result.content === "string" ? result.content.replace(/\r?\n$/, "") : "";
+
+      return {
+        path: result.filePath,
+        kind: "create",
+        hunks: content ? [{ oldStart: 0, newStart: 1, lines: content.split(/\r?\n/).map((line) => `+${line}`) }] : [],
+      };
+    }
+
+    const hunks = result.structuredPatch
+      .filter((hunk) => this.isObject(hunk) && Array.isArray(hunk.lines))
+      .map((hunk): DiffHunk => ({
+        oldStart: typeof hunk.oldStart === "number" ? hunk.oldStart : undefined,
+        newStart: typeof hunk.newStart === "number" ? hunk.newStart : undefined,
+        lines: (hunk.lines as unknown[]).filter((line): line is string => typeof line === "string"),
+      }));
+
+    // An edit that changed nothing has nothing to show.
+    return hunks.length > 0 ? { path: result.filePath, kind: "update", hunks } : null;
   }
 
   /**

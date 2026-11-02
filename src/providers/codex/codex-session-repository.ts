@@ -3,9 +3,18 @@ import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
 import type { UsageLimit, UsageLimitSnapshot } from "../../entities/provider/index.js";
-import type { ConversationMessage, ConversationRole, SessionConversation, SessionReader, SessionSummary } from "../../entities/session/index.js";
+import { describeFileEdit } from "../../entities/session/index.js";
+import type {
+  ConversationMessage,
+  ConversationRole,
+  FileEdit,
+  SessionConversation,
+  SessionReader,
+  SessionSummary,
+} from "../../entities/session/index.js";
 import { IncrementalJsonlReader } from "../../shared/lib/jsonl/index.js";
 import { isSameProjectPath } from "../../shared/lib/paths/index.js";
+import { extractApplyPatch, parseApplyPatch } from "./codex-patch.js";
 import type {
   CodexSessionRepositoryOptions,
   SessionContext,
@@ -16,6 +25,12 @@ import type {
   TurnContextEvent,
 } from "./types.js";
 
+type PatchCall = { edits: FileEdit[]; timestamp?: string };
+
+const patchCallCacheLimit = 200;
+/** What `apply_patch`, the shell or a code-mode script report when a patch did not land. */
+const failedPatchOutputPattern = /verification failed|failed to apply|rejected|declined|script failed|"exit_code"\s*:\s*[1-9]/i;
+
 /**
  * Reads persisted Codex sessions from the local Codex data directory.
  */
@@ -23,6 +38,7 @@ export class CodexSessionRepository implements SessionReader {
   private readonly sessionIndexPath: string;
   private readonly sessionsDirectoryPath: string;
   private readonly conversationReader = new IncrementalJsonlReader<ConversationMessage>();
+  private readonly patchCallsById = new Map<string, PatchCall>();
   /** Session file paths seen by any walk, so an open conversation is not searched for on every poll. */
   private readonly sessionFilePaths = new Map<string, string>();
 
@@ -164,8 +180,65 @@ export class CodexSessionRepository implements SessionReader {
 
       if (!trimmedLine) return null;
 
-      return this.readConversationMessage(this.parseJsonObject(trimmedLine), `${sessionId}:${index}`);
+      const record = this.parseJsonObject(trimmedLine);
+
+      return this.readFileEditMessage(record) ?? this.readConversationMessage(record, `${sessionId}:${index}`);
     });
+  }
+
+  /**
+   * Shows a patch once its output proves it applied. The call carries the
+   * patch and the output the verdict, so each call waits here for its output;
+   * a patch that was declined or failed to apply changed nothing.
+   */
+  private readFileEditMessage(record: Record<string, unknown> | null): ConversationMessage | null {
+    if (!record || record.type !== "response_item" || !this.isObject(record.payload)) return null;
+
+    const payload = record.payload;
+    const callId = this.readString(payload.call_id);
+
+    if (!callId) return null;
+
+    if (payload.type === "custom_tool_call" || payload.type === "function_call") {
+      const patch = extractApplyPatch(this.readString(payload.input) ?? this.readString(payload.arguments) ?? "");
+      const edits = patch ? parseApplyPatch(patch) : [];
+
+      if (edits.length > 0) {
+        this.rememberPatchCall(callId, { edits, timestamp: this.readString(record.timestamp) ?? undefined });
+      }
+
+      return null;
+    }
+
+    if (payload.type !== "custom_tool_call_output" && payload.type !== "function_call_output") return null;
+
+    const call = this.patchCallsById.get(callId);
+
+    if (!call || failedPatchOutputPattern.test(this.readContentText(payload.output))) return null;
+
+    return {
+      id: callId,
+      role: "assistant",
+      text: call.edits.map((edit) => describeFileEdit(edit)).join("\n"),
+      timestamp: call.timestamp,
+      fileEdits: call.edits,
+    };
+  }
+
+  /**
+   * Kept after its output is read: a line still being written is read again
+   * on the next poll and has to find its call a second time.
+   */
+  private rememberPatchCall(callId: string, call: PatchCall): void {
+    this.patchCallsById.set(callId, call);
+
+    while (this.patchCallsById.size > patchCallCacheLimit) {
+      const oldestCallId = this.patchCallsById.keys().next().value;
+
+      if (oldestCallId === undefined) break;
+
+      this.patchCallsById.delete(oldestCallId);
+    }
   }
 
   /**

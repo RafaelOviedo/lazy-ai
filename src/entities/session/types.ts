@@ -41,6 +41,25 @@ export type ConversationMessage = {
   role: ConversationRole;
   text: string;
   timestamp?: string;
+  /** Files the assistant changed in this step; `text` then summarizes them. */
+  fileEdits?: FileEdit[];
+};
+
+/** One file an agent created, changed or deleted, as its provider recorded it. */
+export type FileEdit = {
+  path: string;
+  kind: "create" | "update" | "delete";
+  hunks: DiffHunk[];
+};
+
+/**
+ * A run of changed lines, each prefixed with "+", "-" or " " as in a unified
+ * diff. Line numbers are absent when the provider does not record them.
+ */
+export type DiffHunk = {
+  oldStart?: number;
+  newStart?: number;
+  lines: string[];
 };
 
 export type ConversationRole = "user" | "assistant";
