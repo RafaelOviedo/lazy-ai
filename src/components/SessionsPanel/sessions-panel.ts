@@ -42,7 +42,12 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     private resumingSessionIdValue: string | null = null;
     private deletingSessionIdValue: string | null = null;
     private runStatuses = new Map<string, SessionRunStatus>();
-    private runActivityLabels = new Map<string, string>();
+    /**
+     * Sessions the provider still has work running for, turn or not. Only the
+     * fact of it is kept: the row shows a spinner alone, and what that work is
+     * is named in the details panel, which has the width for it.
+     */
+    private sessionsWithOngoingWork = new Set<string>();
     private liveSessions = new Map<string, SessionSummary>();
     private loadVersion = 0;
     private alreadyRunningSessionIdValue: string | null = null;
@@ -198,26 +203,26 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
     forgetSession(sessionId: string): void {
       this.liveSessions.delete(sessionId);
       this.runStatuses.delete(sessionId);
-      this.runActivityLabels.delete(sessionId);
+      this.sessionsWithOngoingWork.delete(sessionId);
     }
 
     /**
      * Updates only the affected session; other running rows keep their status.
      *
-     * `activityLabel` names work still running for the session, which can
-     * outlast the turn, and takes precedence over the turn's own status.
+     * `hasOngoingWork` reports work still running for the session, which can
+     * outlast the turn and keeps the row's spinner going past it.
      */
-    setSessionRunStatus(sessionId: string, status: SessionRunStatus, activityLabel: string | null = null): void {
-      const previousLabel = this.runActivityLabels.get(sessionId) ?? null;
+    setSessionRunStatus(sessionId: string, status: SessionRunStatus, hasOngoingWork = false): void {
+      const wasWorking = this.sessionsWithOngoingWork.has(sessionId);
 
-      if (this.runStatuses.get(sessionId) === status && previousLabel === activityLabel) return;
+      if (this.runStatuses.get(sessionId) === status && wasWorking === hasOngoingWork) return;
 
       this.runStatuses.set(sessionId, status);
 
-      if (activityLabel) {
-        this.runActivityLabels.set(sessionId, activityLabel);
+      if (hasOngoingWork) {
+        this.sessionsWithOngoingWork.add(sessionId);
       } else {
-        this.runActivityLabels.delete(sessionId);
+        this.sessionsWithOngoingWork.delete(sessionId);
       }
 
       if (this.isConnected) this.updateSessionStatusMarkup(sessionId);
@@ -1010,16 +1015,18 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
      * Shows the prompt target independently of the session's execution status.
      */
     private renderSessionStatusMarkup(session: SessionSummary): string {
-      const status = this.resolveSessionStatus(session);
-      const statusText = escapeHtml(status.text);
       const activeLabel = session.id === this.activeSessionIdValue
         ? '<span class="sessions-panel__active-label" data-active-session="true">Active</span> · '
         : "";
 
-      if (this.runActivityLabels.has(session.id) || ["starting", "thinking"].includes(this.runStatuses.get(session.id) ?? "")) {
-        return `${activeLabel}<span class="sessions-panel__status-thinking"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span> ${statusText}</span>`;
+      // A running row shows the spinner alone. Naming the work here cost more
+      // width than the row has, and the details panel already names all of it.
+      if (this.sessionsWithOngoingWork.has(session.id) || ["starting", "thinking"].includes(this.runStatuses.get(session.id) ?? "")) {
+        return `${activeLabel}<span class="sessions-panel__status-thinking"><span data-thinking-spinner="true">${escapeHtml(this.getThinkingSpinnerFrame())}</span></span>`;
       }
 
+      const status = this.resolveSessionStatus(session);
+      const statusText = escapeHtml(status.text);
       const statusMarkup = status.className
         ? `<span class="${status.className}">${statusText}</span>`
         : statusText;
@@ -1048,12 +1055,6 @@ export function ensureSessionsPanelDefined(window: TermWindow): void {
 
       if (session.id === this.deletingSessionIdValue) {
         return { className: "sessions-panel__status-deleting", text: "Deleting..." };
-      }
-
-      const activityLabel = this.runActivityLabels.get(session.id);
-
-      if (activityLabel) {
-        return { className: "sessions-panel__status-thinking", text: activityLabel };
       }
 
       const runStatus = this.runStatuses.get(session.id);

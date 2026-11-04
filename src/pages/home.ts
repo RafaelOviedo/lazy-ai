@@ -314,11 +314,11 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       sessionsPanel?.upsertSession(state.session);
       // While the turn is in flight the run status already reads correctly; the
       // override is for after it settles, when work carries on without it. The
-      // list shows only the first strand, the details panel shows them all.
+      // list only keeps its spinner going, the details panel names the strands.
       sessionsPanel?.setSessionRunStatus(
         state.session.id,
         state.status,
-        state.busy ? null : describeRunActivity(state)[0] ?? null,
+        !state.busy && describeRunActivity(state).length > 0,
       );
 
       if (detailsPanel?.viewedSession?.id === state.session.id) {
