@@ -15,7 +15,7 @@ export type DetailsPanelElement = HTMLElement & {
   viewSession(session: SessionSummary): void;
   syncConversation(sessionId: string): Promise<void>;
   applyLiveEvent(event: LiveConversationEvent): void;
-  settleLiveEvents(sessionId: string): void;
+  settleLiveEvents(sessionId: string, promptDelivered?: boolean): void;
   thinkingSessionId: string | null;
   thinkingLabel: string;
 };

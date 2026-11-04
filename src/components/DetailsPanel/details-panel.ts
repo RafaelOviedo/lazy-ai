@@ -36,6 +36,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     private viewedSessionValue: SessionSummary | null = null;
     private pendingUserPromptValue: PendingSessionPrompt | null = null;
     private pendingUserPromptInitialMatchCount = 0;
+    /**
+     * Whether the prompt behind the optimistic row actually reached the
+     * provider. A delivered prompt is always written to the transcript
+     * eventually, so its row outlives the run that reported it; one that never
+     * got sent has nothing to wait for and goes at once.
+     */
+    private isPendingUserPromptDelivered = true;
     /** The last optimistic prompt row the transcript took over, never shown again. */
     private retiredUserPromptId: string | null = null;
     private thinkingSessionIdValue: string | null = null;
@@ -165,7 +172,18 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       // show the prompt twice.
       if (value && this.getPendingUserPromptMessageId(value) === this.retiredUserPromptId) return;
 
+      // A turn ending is not the transcript having caught up. A turn can settle
+      // before Claude Code has written the prompt down — a prompt sent while
+      // sub-agents were still working used to vanish from the conversation here
+      // even though the reply to it arrived. The row is kept until the
+      // transcript takes it over in `updateMessages`.
+      if (!value && this.pendingUserPromptValue && this.isPendingUserPromptDelivered
+        && !this.shouldClearPendingUserPrompt(this.transcriptMessages)) {
+        return;
+      }
+
       this.pendingUserPromptValue = value;
+      this.isPendingUserPromptDelivered = true;
       // Counted against the transcript alone: the merged list carries the
       // optimistic row itself, which would otherwise look like a match.
       this.pendingUserPromptInitialMatchCount = value
@@ -319,8 +337,13 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
     /**
      * Drops live rows once the turn is over, leaving the transcript as the only source.
      */
-    settleLiveEvents(sessionId: string): void {
+    settleLiveEvents(sessionId: string, promptDelivered = true): void {
       if (this.viewedSessionValue?.id !== sessionId) return;
+
+      this.isPendingUserPromptDelivered = promptDelivered;
+
+      // The row for an undelivered prompt is dropped by the run reporting it
+      // gone, which follows this call; nothing here has to remove it.
       if (!this.liveMessages.length && !this.liveStreamText) return;
 
       this.resetLiveState();
@@ -835,6 +858,7 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
       // Opening another conversation retires nothing: that row belonged to the
       // session being left behind.
       this.retiredUserPromptId = null;
+      this.isPendingUserPromptDelivered = true;
       this.resetLiveState();
 
       if (!viewedSession) {

@@ -50,7 +50,18 @@ type PendingTurn = {
 type SessionInputQueue = {
   end(): void;
   iterable: AsyncIterable<SDKUserMessage>;
-  push(text: string): void;
+  push(text: string, uuid: string): void;
+};
+
+/**
+ * One prompt lazy-ai sent, paired with the client uuid stamped on it. Claude
+ * Code echoes that uuid back on the result of whichever turn consumed the
+ * prompt, which is the only reliable way to tell which turn a result settles.
+ */
+type SentTurn = {
+  turnId: string;
+  /** The `uuid` put on the SDKUserMessage, echoed back as `user_message_uuid`. */
+  userMessageUuid: string;
 };
 
 type LiveSession = {
@@ -69,8 +80,14 @@ type LiveSession = {
   interruptRetryTimers: Map<string, ReturnType<typeof setInterval>>;
   isResumed: boolean;
   nextTurnIndex: number;
-  /** Turn ids awaiting a result, oldest first. Results arrive in turn order. */
-  orderedTurnIds: string[];
+  /** Prompts awaiting a result, oldest first. */
+  orderedTurns: SentTurn[];
+  /**
+   * Whether this Claude Code build has ever echoed a prompt uuid back. Until it
+   * has, a result carrying none may still be an answer from a build too old to
+   * echo; once it has, a result carrying none is work of its own.
+   */
+  hasEchoedUserMessageUuid: boolean;
   pendingTurns: Set<PendingTurn>;
   query: Query | null;
   sessionId: string;
@@ -149,7 +166,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
   async setMode(mode: AgentMode): Promise<void> {
     if (this.mode === mode) return;
-    if ([...this.sessions.values()].some((session) => session.orderedTurnIds.length)) {
+    if ([...this.sessions.values()].some((session) => session.orderedTurns.length)) {
       throw new Error("Wait for all responses to finish before changing mode.");
     }
     // Closing the query clears provider-side session grants as well as our memo.
@@ -290,13 +307,17 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     }
 
     const turnId = `${session.sessionId}:${session.nextTurnIndex}`;
+    // Stamped on the prompt so the result that consumed it can be recognised
+    // among the turns Claude Code runs for its own background work.
+    const userMessageUuid = randomUUID();
+
     session.nextTurnIndex += 1;
-    session.orderedTurnIds.push(turnId);
+    session.orderedTurns.push({ turnId, userMessageUuid });
 
     try {
-      session.input?.push(prompt);
+      session.input?.push(prompt, userMessageUuid);
     } catch (error) {
-      session.orderedTurnIds = session.orderedTurnIds.filter((id) => id !== turnId);
+      session.orderedTurns = session.orderedTurns.filter((turn) => turn.turnId !== turnId);
       throw this.toError(error, "Failed to send the prompt to Claude Code.");
     }
 
@@ -347,7 +368,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
 
     // An interrupt accepted during startup aborts nothing, so keep asking until
     // the turn actually ends.
-    this.scheduleInterruptRetries(session, turnId || session.orderedTurnIds[0] || "");
+    this.scheduleInterruptRetries(session, turnId || session.orderedTurns[0]?.turnId || "");
   }
 
   /**
@@ -384,7 +405,8 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
       interruptRetryTimers: new Map<string, ReturnType<typeof setInterval>>(),
       isResumed,
       nextTurnIndex: 0,
-      orderedTurnIds: [],
+      orderedTurns: [],
+      hasEchoedUserMessageUuid: false,
       pendingTurns: new Set<PendingTurn>(),
       query: null,
       sessionId,
@@ -631,7 +653,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     const timer = setInterval(() => {
       attempts += 1;
 
-      const isTurnStillRunning = session.orderedTurnIds[0] === turnId;
+      const isTurnStillRunning = session.orderedTurns[0]?.turnId === turnId;
 
       if (!isTurnStillRunning || !session.query || attempts > interruptRetryLimit) {
         this.clearInterruptRetries(session, turnId);
@@ -658,28 +680,100 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   }
 
   private recordTurnCompletion(session: LiveSession, message: SDKResultMessage): void {
-    const turnId = session.orderedTurnIds.shift() ?? "";
+    const settledTurnIds = this.readSettledTurnIds(session, message);
 
-    this.clearInterruptRetries(session, turnId);
-    const completion: TurnCompletion = {
-      ...this.readCompletionStatus(message),
-      turnId,
-    };
+    // A result for work nobody here asked for. Claude Code runs a turn of its
+    // own whenever a background task reports back, and taking that as an
+    // answer used to settle whichever prompt happened to be waiting.
+    if (settledTurnIds === null) return;
 
     // A finished turn means the transcript now exists, so if this session's
     // process later exits, the next turn has to resume it rather than try to
     // create the same session id a second time.
     session.isResumed = true;
 
-    session.completedTurns.push(completion);
-    session.completedTurns = session.completedTurns.slice(-completedTurnHistoryLimit);
+    const status = this.readCompletionStatus(message);
 
-    for (const pendingTurn of [...session.pendingTurns]) {
-      if (pendingTurn.turnId && turnId && pendingTurn.turnId !== turnId) continue;
+    for (const turnId of settledTurnIds) {
+      this.clearInterruptRetries(session, turnId);
 
-      session.pendingTurns.delete(pendingTurn);
-      pendingTurn.resolve(completion);
+      const completion: TurnCompletion = { ...status, turnId };
+
+      session.completedTurns.push(completion);
+
+      for (const pendingTurn of [...session.pendingTurns]) {
+        if (pendingTurn.turnId && turnId && pendingTurn.turnId !== turnId) continue;
+
+        session.pendingTurns.delete(pendingTurn);
+        pendingTurn.resolve(completion);
+      }
     }
+
+    session.completedTurns = session.completedTurns.slice(-completedTurnHistoryLimit);
+  }
+
+  /**
+   * Names the prompts one result answers, or null when it answers none of ours.
+   *
+   * Claude Code echoes the client uuid of every prompt a turn consumed, and the
+   * mapping is not one result per prompt in either direction: a background task
+   * finishing drives a turn with no prompt behind it at all, while prompts sent
+   * close together, or one queued and folded into a running turn, are answered
+   * by a single result. Matching on the echo is what keeps those apart; the
+   * oldest-first fallback is only for a Claude Code too old to echo anything.
+   */
+  private readSettledTurnIds(session: LiveSession, message: SDKResultMessage): string[] | null {
+    const echoedUuids = this.readUserMessageUuids(message);
+
+    if (!echoedUuids.size) {
+      // A build that has already echoed omits the echo only on a turn that
+      // consumed no prompt — the background-driven turn this guards against.
+      // An error result is taken anyway: those are documented to carry no echo
+      // even for a prompt that did run, and dropping one hangs its turn.
+      const isAnswer = !session.hasEchoedUserMessageUuid || message.is_error;
+
+      if (!isAnswer) return null;
+
+      const oldestTurn = session.orderedTurns.shift();
+
+      return oldestTurn ? [oldestTurn.turnId] : null;
+    }
+
+    // Any echo at all proves the build echoes, including one naming only
+    // prompts of its own, so a later result carrying none is work of its own.
+    session.hasEchoedUserMessageUuid = true;
+
+    const settled = session.orderedTurns.filter((turn) => echoedUuids.has(turn.userMessageUuid));
+
+    if (!settled.length) return null;
+
+    const settledUuids = new Set(settled.map((turn) => turn.userMessageUuid));
+
+    session.orderedTurns = session.orderedTurns.filter((turn) => !settledUuids.has(turn.userMessageUuid));
+
+    return settled.map((turn) => turn.turnId);
+  }
+
+  /**
+   * Reads the client uuids a result reports having consumed. The list carries
+   * every prompt the turn folded in and always contains the single-value field,
+   * which is read as well for producers that only send that one.
+   */
+  private readUserMessageUuids(message: SDKResultMessage): Set<string> {
+    const uuids = new Set<string>();
+    const uuidList = "user_message_uuids" in message ? message.user_message_uuids : undefined;
+
+    if (Array.isArray(uuidList)) {
+      for (const uuid of uuidList) {
+        if (typeof uuid === "string" && uuid) uuids.add(uuid);
+      }
+    }
+
+    const singleUuid = "user_message_uuid" in message ? message.user_message_uuid : undefined;
+
+    if (typeof singleUuid === "string" && singleUuid) uuids.add(singleUuid);
+
+    return uuids;
   }
 
   /**
@@ -842,7 +936,7 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     }
 
     session.pendingTurns.clear();
-    session.orderedTurnIds = [];
+    session.orderedTurns = [];
   }
 
   private isExecutableFailure(error: Error): boolean {
@@ -924,7 +1018,7 @@ function createSessionInputQueue(): SessionInputQueue {
         };
       },
     },
-    push(text: string): void {
+    push(text: string, uuid: string): void {
       if (isEnded) {
         throw new Error("Claude Code session input is closed.");
       }
@@ -934,6 +1028,10 @@ function createSessionInputQueue(): SessionInputQueue {
         message: { role: "user", content: [{ type: "text", text }] },
         parent_tool_use_id: null,
         session_id: "",
+        // Echoed back on the result of whichever turn consumes this prompt, so
+        // a turn Claude Code runs for its own background work is never mistaken
+        // for the answer to it.
+        uuid,
       } as unknown as SDKUserMessage;
 
       const deliver = deliverNext;

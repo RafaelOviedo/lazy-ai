@@ -335,7 +335,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       toolApprovalController.cancelSessionRequests(threadId);
       if (sessionId !== threadId) toolApprovalController.cancelSessionRequests(sessionId);
     },
-    onTurnSettled: (sessionId) => detailsPanel?.settleLiveEvents(sessionId),
+    onTurnSettled: (sessionId, promptDelivered) => detailsPanel?.settleLiveEvents(sessionId, promptDelivered),
     syncConversation: (sessionId) => detailsPanel?.syncConversation(sessionId) ?? Promise.resolve(),
     syncSession: async (sessionId, sessionProjectPath) => {
       // Background sessions may belong to a different project than the visible list.

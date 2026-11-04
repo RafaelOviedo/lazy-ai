@@ -101,8 +101,12 @@ type Options = {
   providerLabel: string;
   onChange(state: SessionRunState): void;
   onTurnFinished(sessionId: string, threadId: string): void;
-  /** Called once the transcript has had its final reads, so live output can yield to it. */
-  onTurnSettled?(sessionId: string): void;
+  /**
+   * Called once the transcript has had its final reads, so live output can
+   * yield to it. `promptDelivered` says whether the prompt reached the provider
+   * at all, and so whether the transcript is ever going to record it.
+   */
+  onTurnSettled?(sessionId: string, promptDelivered: boolean): void;
   reportActionError(message: string): void;
   refreshUsageLimit(): void;
   syncSession(sessionId: string, projectPath: string): Promise<SessionSummary | null>;
@@ -174,7 +178,12 @@ export function createSessionRunController(options: Options) {
 
   async function runTurn(session: SessionSummary, threadId: string, prompt: string): Promise<void> {
     const text = prompt.trim();
-    if (disposed || !text || runs.get(session.id)?.busy) return;
+    const previousRun = runs.get(session.id);
+    if (disposed || !text || previousRun?.busy) return;
+
+    // A poll kept alive for the previous turn's background work belongs to a
+    // run this one is about to replace, and a replaced run polls for nothing.
+    if (previousRun) stopPolling(previousRun);
 
     const run: Run = {
       session, threadId, status: "starting", busy: true,
@@ -205,7 +214,10 @@ export function createSessionRunController(options: Options) {
       const completion = await options.client.waitForTurnCompletion(threadId, turnId);
       if (!isCurrent(run)) return;
 
-      stopPolling(run);
+      // The transcript is still being written while sub-agents and background
+      // shells carry on, so the poll outlives the turn and is stopped once the
+      // provider reports itself idle.
+      if (!hasWorkBeyondTurn(run)) stopPolling(run);
       run.turnId = null;
       run.status = completion.status === "interrupted" ? "interrupted"
         : completion.status === "completed" ? "completed" : "failed";
@@ -230,9 +242,9 @@ export function createSessionRunController(options: Options) {
       options.onTurnFinished(session.id, threadId);
       options.reportActionError(`${options.providerLabel} session “${run.session.title}”: ${error instanceof Error ? error.message : "Failed to generate a response."}`);
     } finally {
-      stopPolling(run);
+      if (!isCurrent(run) || !hasWorkBeyondTurn(run)) stopPolling(run);
       if (isCurrent(run)) {
-        options.onTurnSettled?.(session.id);
+        options.onTurnSettled?.(session.id, didStart);
         run.busy = false;
         run.pendingPrompt = null;
         publish(run);
@@ -276,6 +288,7 @@ export function createSessionRunController(options: Options) {
   function forgetSession(sessionId: string): void {
     const run = runs.get(sessionId);
     if (run?.busy) return;
+    if (run) stopPolling(run);
     runs.delete(sessionId);
   }
 
@@ -307,6 +320,12 @@ export function createSessionRunController(options: Options) {
 
     run.providerState = providerState;
     publish(run);
+
+    // Everything the session was going to write is now written, so this is the
+    // last read the transcript needs and the point the poll can stop.
+    if (providerState === "idle" && !run.busy) {
+      void poll(run).finally(() => stopPolling(run));
+    }
   }
 
   function isBusy(sessionId: string): boolean {
