@@ -1,7 +1,8 @@
 /**
  * Registers the Keybindings panel custom element against a TermDOM window.
  */
-import { renderWithStableStyle } from "../../shared/lib/html/index.js";
+import { appVersion } from "../../app/version.js";
+import { escapeHtml, renderWithStableStyle } from "../../shared/lib/html/index.js";
 import type { FocusedPanel, TermWindow } from "./types.js";
 
 const spaceActionLabels: Record<FocusedPanel, string> = {
@@ -95,7 +96,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
             <span class="keybindings-panel__key">Keybindings: ?</span>
           </div>
         </div>
-        <span>v1.4.0</span>
+        <span>v${escapeHtml(appVersion)}</span>
       `,
       );
     }
