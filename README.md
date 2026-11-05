@@ -78,6 +78,9 @@ Potential additions to LazyAI. This list captures ideas for future development; 
   - [Resume and Prompt Sessions](#resume-and-prompt-sessions)
   - [Switch Providers and Models](#switch-providers-and-models)
   - [Select an Agent Mode](#select-an-agent-mode)
+  - [Answer Agent Questions](#answer-agent-questions)
+  - [Inspect File Changes](#inspect-file-changes)
+  - [Track Background Activity](#track-background-activity)
   - [Approve Codex or Claude Code Tools](#approve-codex-or-claude-code-tools)
   - [Inspect Context and Usage](#inspect-context-and-usage)
 - [Installation](#installation)
@@ -103,7 +106,7 @@ Press `Space` on a session to resume it, `n` to start a new one in the selected 
 
 Sessions can work in parallel: start another with `n`, or activate an idle session with `Space` and prompt it with `p` while others are thinking. Starting a session opens its conversation. To watch another session's incoming messages, highlight it and press `w`. Finishing a response updates its status without changing your view or selection.
 
-The session targeted by `p` and `i` keeps a green **Active** label alongside its status, such as **Active · Thinking...** or **Active · Completed**, even while you view another conversation.
+The session targeted by `p` and `i` keeps a green **Active** label alongside its activity spinner or status, such as **Active · Completed**, even while you view another conversation.
 
 ![LazyAI: resuming and prompting sessions](docs/gifs/resume-and-prompt-sessions.gif)
 
@@ -134,7 +137,31 @@ The selected mode applies across projects, providers, models, new sessions, and 
 
 To implement a plan, wait for the planning response to finish, review it, press `f` to select Manual, Accept edits, or Auto, and press `p` to send your implementation instruction. Plan remains selected until you change it. Switching modes preserves the transcript and clears temporary runtime grants; existing user-managed permission rules still apply.
 
-When an agent needs clarification, LazyAI shows its questions in a modal. Use `j` / `k` or arrows to choose, `Space` to toggle multiple selections, `Tab` to type a custom answer, and `Enter` to continue. Answers are sent after the final question. `Esc` cancels the batch; cancelled or interrupted requests are not left waiting.
+![LazyAI: selecting an agent mode and switching from planning to implementation](docs/gifs/select-agent-mode.gif)
+
+### Answer Agent Questions
+
+When Claude Code or Codex needs clarification, LazyAI opens a question dialog directly in the terminal. Move between options with `j` / `k` or the arrow keys, use `Space` for questions that support multiple selections, and press `Tab` to enter a custom answer when offered.
+
+Press `Enter` to continue through the questions. Answers are sent after the final question so the agent can continue with your choices. Press `Esc` to cancel the batch; cancelled or interrupted requests are not left waiting.
+
+![LazyAI: answering agent questions with selectable options and custom text](docs/gifs/answer-agent-questions.gif)
+
+### Inspect File Changes
+
+File changes made by Claude Code and Codex appear directly in the conversation. Each entry identifies the affected file and whether it was created, updated, or deleted. Edits show highlighted additions and removals, with line counts to help you understand the size of the change.
+
+Follow changes as the agent works, or review them when opening a saved conversation. Long diffs are shortened, with an indication of omitted lines, and the conversation displays the latest 100 messages. Focus the details panel and use `j` / `k` or `PageDown` / `PageUp` to scroll through changes and the surrounding discussion.
+
+![LazyAI: reviewing file edits as inline diffs in the conversation](docs/gifs/inspect-file-diffs.gif)
+
+### Track Background Activity
+
+Claude Code and Codex can finish a response while sub-agents or background terminal tasks continue working. LazyAI keeps the session's activity spinner running and shows ongoing work in the details panel, including sub-agent and terminal activity happening at the same time.
+
+Highlight a session and press `w` to follow its conversation and activity. Updates continue after the main response ends, and tool permission requests still appear when background work needs approval. The activity indicator clears once the session becomes idle. Keep LazyAI open to follow this work.
+
+![LazyAI: following sub-agents and background terminal tasks until completion](docs/gifs/track-background-activity.gif)
 
 ### Approve Codex or Claude Code Tools
 
