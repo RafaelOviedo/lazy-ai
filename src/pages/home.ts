@@ -50,6 +50,9 @@ import { createSessionRunController, describeRunActivity, hasWorkBeyondTurn } fr
 import { createSessionResumeController } from "../features/resume-session/index.js";
 import { createToolApprovalController } from "../features/approve-tool-use/index.js";
 import { createUsageLimitController } from "../features/refresh-usage-limit/index.js";
+import { createMcpServerController } from "../features/manage-mcp-servers/index.js";
+
+import type { McpServerListener } from "../features/manage-mcp-servers/index.js";
 
 import type { ToolPermissionDecision, ToolPermissionRequest } from "../entities/provider/index.js";
 
@@ -221,6 +224,37 @@ export function renderHome({ document, projectPath, window }: PageProps) {
       syncStatusPanel();
     },
   });
+
+  const mcpServerController = createMcpServerController({
+    client: appServerClient,
+    cwd: projectPath,
+    providerLabel: providerProfile.label,
+    // Reading through the live session reports that session's own MCP
+    // connections; without one the provider falls back to a probe.
+    getActiveThreadId: () => sessionResumeController.getActiveSessionId() ?? undefined,
+  });
+
+  /**
+   * Opens the MCP server viewer for the active provider.
+   *
+   * The first read is slow enough to see on a cold provider, so the modal is
+   * opened first and fills itself in as the controller reports.
+   */
+  function openMcpServersModal(): void {
+    if (isDisposed || getModalConfig().isActive) return;
+
+    mcpServerController.open();
+    openModal(ModalName.mcpServersModal, {
+      providerId: providerProfile.id,
+      providerLabel: providerProfile.label,
+      getState: () => mcpServerController.getState(),
+      subscribe: (listener: McpServerListener) => mcpServerController.subscribe(listener),
+      onRefresh: () => mcpServerController.refresh(),
+      onReconnect: (serverName: string) => void mcpServerController.reconnect(serverName),
+      onClearNotice: () => mcpServerController.clearNotice(),
+      onNotice: (message: string) => mcpServerController.notify(message),
+    });
+  }
 
   function refreshUsageLimitAfterTurn(): void {
     if (providerProfile.id === "codex") {
@@ -765,8 +799,17 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     if (handleInterruptSessionShortcut(event, key)) return;
     if (handleNewSessionShortcut(event, key)) return;
     if (handlePromptSessionShortcut(event, key)) return;
+    if (handleMcpServersShortcut(event, key)) return;
     if (handleQuitShortcut(event, key)) return;
     if (handlePanelNavigation(event, key)) return;
+  }
+
+  function handleMcpServersShortcut(event: KeyboardEvent, key: string): boolean {
+    if (!isPlainKeyEvent(event) || key !== Keybindings.S) return false;
+
+    event.preventDefault();
+    openMcpServersModal();
+    return true;
   }
 
   function handleModalShortcuts(event: KeyboardEvent, key: string): boolean {
@@ -863,6 +906,9 @@ export function renderHome({ document, projectPath, window }: PageProps) {
   const unsubscribeModal = subscribeModal(() => {
     if (getModalConfig().isActive) return;
 
+    // Closing the viewer drops any probe process it started; a live session's
+    // own query is left alone.
+    mcpServerController.close();
     toolApprovalController.handleModalClosed();
     flushPendingActionError();
   });
@@ -917,6 +963,7 @@ export function renderHome({ document, projectPath, window }: PageProps) {
     sessionDeleteController.dispose();
     sessionRunController.dispose();
     sessionResumeController.dispose();
+    mcpServerController.dispose();
     // Detached before disposal so no in-flight request reaches a dead modal.
     appServerClient.setToolPermissionHandler?.(null);
     appServerClient.setModeNoticeHandler?.(null);

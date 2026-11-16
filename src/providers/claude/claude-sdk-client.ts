@@ -6,6 +6,7 @@ import { resolveExecutablePath } from "../../shared/lib/process/index.js";
 import { parseClaudeEffort } from "./claude-effort.js";
 import { claudePermissionMode, planFinishedMessage, type AgentMode, type ModeAvailability } from "../../entities/provider/model/agent-mode.js";
 import { parseClaudeQuestions } from "./claude-questions.js";
+import { mapClaudeMcpServers } from "./claude-mcp-status.js";
 
 import type {
   Options,
@@ -23,6 +24,9 @@ import type {
   BackgroundTask,
   BackgroundTaskKind,
   LiveConversationHandler,
+  McpReconnectResult,
+  McpServerInfo,
+  McpServerListOptions,
   ProviderRuntimeClient,
   ProviderSessionState,
   SessionStateHandler,
@@ -147,6 +151,12 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
   private liveConversationHandler: LiveConversationHandler | null = null;
   private backgroundActivityHandler: BackgroundActivityHandler | null = null;
   private sessionStateHandler: SessionStateHandler | null = null;
+  /**
+   * A query held open purely to answer MCP status reads when no session is
+   * live. It never receives a prompt, so it starts no turn; the SDK still
+   * answers control requests on it.
+   */
+  private mcpProbe: { input: SessionInputQueue; query: Query } | null = null;
   private isDisposed = false;
 
   constructor(options: ClaudeSdkClientOptions = {}, private readonly createQuery: typeof query = query) {
@@ -379,8 +389,84 @@ export class ClaudeSdkClient implements ProviderRuntimeClient {
     throw new Error("Deleting Claude Code sessions is not supported in lazy-ai.");
   }
 
+  /**
+   * Reports Claude Code's MCP servers.
+   *
+   * Prefers a live session's query so the answer describes connections that
+   * session actually has. With none running there is nothing to ask, so a
+   * probe query is opened and kept for later reads: starting one costs a
+   * Claude Code launch, which is far too slow to repeat per poll.
+   */
+  async listMcpServers(options: McpServerListOptions = {}): Promise<McpServerInfo[]> {
+    this.assertNotDisposed();
+
+    const query = this.resolveMcpQuery(options);
+    const statuses = await query.mcpServerStatus();
+
+    return mapClaudeMcpServers(statuses);
+  }
+
+  /**
+   * Reconnects one MCP server. Claude Code rejects a name it does not know,
+   * which is surfaced as-is rather than reported as a success.
+   */
+  async reconnectMcpServer(serverName: string, options: McpServerListOptions = {}): Promise<McpReconnectResult> {
+    this.assertNotDisposed();
+
+    await this.resolveMcpQuery(options).reconnectMcpServer(serverName);
+
+    return { scope: "server" };
+  }
+
+  /**
+   * Closes the probe query if one was opened. Live sessions are left alone:
+   * they are not ours to close here.
+   */
+  releaseMcpResources(): void {
+    const probe = this.mcpProbe;
+
+    if (!probe) return;
+
+    this.mcpProbe = null;
+    probe.input.end();
+    void probe.query.return(undefined).catch(() => { });
+  }
+
+  /**
+   * Picks the query to ask about MCP state, opening a probe only as a last
+   * resort.
+   */
+  private resolveMcpQuery(options: McpServerListOptions): Query {
+    const named = options.threadId ? this.sessions.get(options.threadId) : undefined;
+
+    if (named?.query) return named.query;
+
+    for (const session of this.sessions.values()) {
+      if (session.query) return session.query;
+    }
+
+    if (this.mcpProbe) return this.mcpProbe.query;
+
+    const input = createSessionInputQueue();
+    // No prompt is ever pushed, so the query initializes and then idles.
+    const query = this.createQuery({
+      prompt: input.iterable,
+      options: {
+        cwd: options.cwd ?? process.cwd(),
+        ...(cachedExecutablePath && !hasExecutableLaunchFailure
+          ? { pathToClaudeCodeExecutable: cachedExecutablePath }
+          : {}),
+      },
+    });
+
+    this.mcpProbe = { input, query };
+
+    return query;
+  }
+
   dispose(): void {
     this.isDisposed = true;
+    this.releaseMcpResources();
     this.toolPermissionHandler = null;
     this.liveConversationHandler = null;
     this.backgroundActivityHandler = null;

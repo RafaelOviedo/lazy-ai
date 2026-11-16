@@ -4,11 +4,16 @@ import { createInterface, type Interface as ReadlineInterface } from "node:readl
 import { SessionAlreadyRunningError } from "../../entities/provider/index.js";
 import { requiresShellToSpawn, resolveExecutablePath } from "../../shared/lib/process/index.js";
 import { agentModes, codexModePolicy, type AgentMode, type ModeAvailability } from "../../entities/provider/model/agent-mode.js";
+import { mapCodexMcpServers } from "./codex-mcp-status.js";
+
 import type { AgentQuestion } from "../../entities/provider/types.js";
 
 import type {
   BackgroundActivityHandler,
   BackgroundTask,
+  McpReconnectResult,
+  McpServerInfo,
+  McpServerListOptions,
   ProviderSessionState,
   SessionStateHandler,
   ToolPermissionDecision,
@@ -23,6 +28,7 @@ import type {
   CodexCommandExecutionApprovalParams,
   CodexFileChangeApprovalParams,
   CodexItemNotification,
+  CodexMcpServerStatus,
   CodexOfferedApprovalDecision,
   CodexServerRequestResolvedNotification,
   CodexThreadStatusChangedNotification,
@@ -166,6 +172,13 @@ const fileChangeItemCacheLimit = 200;
 // the list is re-read on a delay after anything that could have changed it, and
 // kept being re-read while one is alive so its exit is noticed.
 const backgroundTerminalPollIntervalMs = 1500;
+/**
+ * MCP discovery starts servers and lists their tools, which is far slower than
+ * a config read, so it gets its own ceiling rather than the default.
+ */
+const mcpServerStatusTimeoutMs = 30000;
+/** Most status pages to follow before giving up on a cursor that never ends. */
+const mcpServerPageLimit = 20;
 /** Collab agent states that mean the agent still has work to do. */
 const liveCollabAgentStatuses = new Set(["pendingInit", "running"]);
 /** `subAgentActivity` phases that leave the agent running. */
@@ -240,6 +253,55 @@ export class CodexAppServerClient {
   }
 
   setModeNoticeHandler(handler: ((message: string) => void) | null): void { this.modeNoticeHandler = handler; }
+
+  /**
+   * Reloads Codex's MCP servers.
+   *
+   * The app-server has no per-server reconnect: `config/mcpServer/reload`
+   * takes no arguments and restarts them all. The name is accepted so the
+   * interface matches Claude Code's, and the returned scope tells the caller
+   * what really happened.
+   */
+  async reconnectMcpServer(_serverName: string): Promise<McpReconnectResult> {
+    await this.initialize();
+    await this.request("config/mcpServer/reload", null, mcpServerStatusTimeoutMs);
+
+    return { scope: "all" };
+  }
+
+  /**
+   * Reports Codex's MCP servers.
+   *
+   * The app-server answers this without a thread, which is what the dashboard
+   * needs, but then leaves `runtimeStatus` null because there is no session to
+   * describe. Passing a live thread id fills it in.
+   */
+  async listMcpServers(options: McpServerListOptions = {}): Promise<McpServerInfo[]> {
+    await this.initialize();
+
+    const collected: CodexMcpServerStatus[] = [];
+    let cursor: string | undefined;
+    // Guards against a server that keeps handing back a cursor.
+    let pagesRemaining = mcpServerPageLimit;
+
+    do {
+      const page = await this.request<{ data?: CodexMcpServerStatus[]; nextCursor?: string | null }>(
+        "mcpServerStatus/list",
+        {
+          detail: "full",
+          ...(options.threadId ? { threadId: options.threadId } : {}),
+          ...(cursor ? { cursor } : {}),
+        },
+        mcpServerStatusTimeoutMs,
+      );
+
+      collected.push(...(page.data ?? []));
+      cursor = page.nextCursor ?? undefined;
+      pagesRemaining -= 1;
+    } while (cursor && pagesRemaining > 0);
+
+    return mapCodexMcpServers(collected);
+  }
 
   async getModeAvailability(): Promise<ModeAvailability> {
     await this.initialize();

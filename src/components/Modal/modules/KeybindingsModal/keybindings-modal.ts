@@ -79,7 +79,7 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
             flex-direction: column;
             justify-content: flex-start;
             width: 30%;
-            min-height: 60%;
+            min-height: 65%;
             border: 1px solid #fff;
             background: #000;
             border-radius: 5px;
@@ -142,6 +142,7 @@ export function ensureKeybindingsModalDefined(window: TermWindow): void {
           <span class="keybindings-modal__key"><span style="color: #fff;">d</span> Delete session (Codex only)</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">m</span> Providers and models</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">f</span> Agent modes</span>
+          <span class="keybindings-modal__key"><span style="color: #fff;">s</span> MCP servers</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">w</span> View conversation (Sessions panel)</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">q</span> Quit</span>
           <span class="keybindings-modal__key"><span style="color: #fff;">?</span> Keybindings</span>

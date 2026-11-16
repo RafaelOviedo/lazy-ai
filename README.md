@@ -57,7 +57,7 @@ Potential additions to LazyAI. This list captures ideas for future development; 
 23. **Agent/model comparisons** — Run the same task in isolated workspaces and compare changes and test results.
 24. **Usage dashboard** — Track available token usage, limits, duration, and clearly labeled cost estimates.
 25. **Provider diagnostics** — Explain missing installations, authentication issues, unavailable models, and incompatible versions.
-26. **MCP and tool visibility** — Inspect connected tools, capabilities, and connection status.
+26. **MCP server management** — Enable, disable, and sign in to servers from the viewer, and add or remove them.
 27. **Deeper Neovim integration** — Send selections, open changed files, and jump between editor and session.
 28. **Issue-to-task workflows** — Connect an issue to a session, worktree, test results, and pull request.
 29. **Remote sessions** — Connect to agents running on another machine.
@@ -83,6 +83,7 @@ Potential additions to LazyAI. This list captures ideas for future development; 
   - [Track Background Activity](#track-background-activity)
   - [Approve Codex or Claude Code Tools](#approve-codex-or-claude-code-tools)
   - [Inspect Context and Usage](#inspect-context-and-usage)
+  - [Inspect MCP servers](#inspect-mcp-servers)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Keybindings](#keybindings)
@@ -113,6 +114,39 @@ The session targeted by `p` and `i` keeps a green **Active** label alongside its
 ### Switch Providers and Models
 
 Press `m` to open the provider and model picker. LazyAI detects usable local providers at startup and rebuilds the dashboard when you switch between Claude Code and Codex.
+
+### Inspect MCP servers
+
+Press `s` to list the MCP servers the active provider has configured, with each
+server's connection state, scope, transport and tool count. Press `Enter` on a
+server to read its tools, `r` to reconnect the highlighted one, `/` to filter
+the list by name, `f` to re-read, and `Esc` to step back out.
+
+The list shows as many servers as the terminal fits and scrolls as you move,
+with `PageUp` and `PageDown` turning a page; the summary line names the range
+you are looking at. Filtering always searches every configured server, not only
+the ones on screen. Each server takes one line, so a long name is shortened
+before its connection state is. Tools are listed with whatever the server reports about
+them: Claude Code supplies read-only and destructive hints, Codex supplies
+descriptions.
+
+Both providers start MCP servers without blocking, so servers appear as
+*starting* and settle to *connected* over the first few seconds; LazyAI re-reads
+until they do. Reading through a running session reports that session's own
+connections. With no session running, LazyAI asks the provider directly, which
+on Claude Code means briefly starting a background process that is closed again
+when you leave the viewer.
+
+Reconnecting asks the provider to bring a server back, then keeps reading until
+it settles and reports what actually happened rather than that the request was
+accepted. Codex has no per-server reconnect — it reloads every configured
+server — and the result says so. A server waiting on sign-in cannot be fixed by
+reconnecting, so the viewer names the `claude mcp login` or `codex mcp login`
+command that does.
+
+LazyAI never writes to your `~/.claude.json`, `.mcp.json` or
+`~/.codex/config.toml`: every change is asked of the provider, which owns those
+files. Use `claude mcp` or `codex mcp` to add or remove a server.
 
 Move between models with `j` / `k`, and choose a **Thinking level** with `h` / `l`. `Enter` applies both choices; `Esc` discards your changes. Available levels depend on the model. **Default** leaves effort to the provider; after an explicit override, it restores the session's original Codex effort or relaunches the same Claude session without an effort override. Changing only the thinking level keeps your active session and applies to the next prompt. Choices last until you exit LazyAI, and the status bar shows the selected level.
 
@@ -227,6 +261,7 @@ Dashboard shortcuts apply while no modal is open.
 | `d` | Sessions | Open the delete confirmation for the highlighted Codex session |
 | `m` | Dashboard | Open the provider and model picker |
 | `f` | Dashboard | Select the global agent mode |
+| `s` | Dashboard | Open the MCP server viewer |
 | `j` / `k` | Details | Scroll down / up |
 | `PageDown` / `PageUp` | Details | Scroll down / up in larger steps |
 | `Home` / `End` | Details | Jump to the top / bottom of the conversation |
@@ -236,6 +271,11 @@ Dashboard shortcuts apply while no modal is open.
 | `Space` | Multiple-choice agent questions | Toggle a selection |
 | `Tab` | Agent questions | Type a custom answer when offered |
 | `h` / `l` | Model picker | Change thinking level for the highlighted model |
+| `r` | MCP servers | Reconnect the highlighted server |
+| `f` | MCP servers | Re-read server status |
+| `/` | MCP servers | Filter the server list by name |
+| `PageUp` / `PageDown` | MCP servers | Turn a page of servers or tools |
+| `r` | MCP servers | Re-read server status |
 | `Enter` | Prompts, picker, confirmations | Submit the prompt or confirm the selected action |
 | `Ctrl+J` | Prompt input | Insert a new line |
 | `Esc` | Modals | Cancel or close; deny a pending tool permission request |

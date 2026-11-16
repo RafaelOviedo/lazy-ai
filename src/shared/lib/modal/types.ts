@@ -2,6 +2,7 @@ export enum ModalName {
   actionErrorModal = "ActionErrorModal",
   confirmDeleteSessionModal = "ConfirmDeleteSessionModal",
   keybindingsModal = "KeybindingsModal",
+  mcpServersModal = "McpServersModal",
   modelPickerModal = "ModelPickerModal",
   modesModal = "ModesModal",
   agentQuestionsModal = "AgentQuestionsModal",

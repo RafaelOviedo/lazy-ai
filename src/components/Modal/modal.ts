@@ -5,6 +5,7 @@ import { Keybindings } from "../../app/types.js";
 import { ensureActionErrorModalDefined } from "./modules/ActionErrorModal/action-error-modal.js";
 import { ensureConfirmDeleteSessionModalDefined } from "./modules/ConfirmDeleteSessionModal/confirm-delete-session-modal.js";
 import { ensureKeybindingsModalDefined } from "./modules/KeybindingsModal/keybindings-modal.js";
+import { ensureMcpServersModalDefined } from "./modules/McpServersModal/mcp-servers-modal.js";
 import { ensureModelPickerModalDefined } from "./modules/ModelPickerModal/model-picker-modal.js";
 import { ensureModesModalDefined } from "./modules/ModesModal/modes-modal.js";
 import { ensureAgentQuestionsModalDefined } from "./modules/AgentQuestionsModal/agent-questions-modal.js";
@@ -19,6 +20,7 @@ const modalComponentMap: Record<ModalName, ModalComponentDefinition> = {
   [ModalName.actionErrorModal]: { tagName: "action-error-modal", define: ensureActionErrorModalDefined },
   [ModalName.confirmDeleteSessionModal]: { tagName: "confirm-delete-session-modal", define: ensureConfirmDeleteSessionModalDefined },
   [ModalName.keybindingsModal]: { tagName: "keybindings-modal", define: ensureKeybindingsModalDefined },
+  [ModalName.mcpServersModal]: { tagName: "mcp-servers-modal", define: ensureMcpServersModalDefined },
   [ModalName.modelPickerModal]: { tagName: "model-picker-modal", define: ensureModelPickerModalDefined },
   [ModalName.modesModal]: { tagName: "modes-modal", define: ensureModesModalDefined },
   [ModalName.agentQuestionsModal]: { tagName: "agent-questions-modal", define: ensureAgentQuestionsModalDefined },

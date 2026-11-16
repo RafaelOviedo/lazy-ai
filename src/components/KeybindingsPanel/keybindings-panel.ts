@@ -92,6 +92,7 @@ export function ensureKeybindingsPanelDefined(window: TermWindow): void {
             <span class="keybindings-panel__key">Prompt session: p</span> <span>|</span>
             <span class="keybindings-panel__key">Delete session: d</span> <span>|</span>
             <span class="keybindings-panel__key">Models: m</span> <span>|</span>
+            <span class="keybindings-panel__key">MCP servers: s</span> <span>|</span>
             <span class="keybindings-panel__key">Quit: q</span> <span>|</span>
             <span class="keybindings-panel__key">Keybindings: ?</span>
           </div>

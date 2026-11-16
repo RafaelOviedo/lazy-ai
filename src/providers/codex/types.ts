@@ -204,3 +204,23 @@ export type SessionContext = {
   updatedAt?: string;
   usageLimit?: UsageLimit;
 };
+
+/**
+ * One entry of the Codex app-server's `mcpServerStatus/list` response. Only the
+ * fields lazy-ai renders are declared; the server sends more.
+ */
+export type CodexMcpServerStatus = {
+  name: string;
+  authStatus?: string;
+  /** Null unless the read was scoped to a live thread. */
+  runtimeStatus?: string | null;
+  pluginId?: string | null;
+  httpOrigin?: string | null;
+  serverInfo?: { name?: string; version?: string; title?: string | null } | null;
+  tools?: Record<string, {
+    description?: string;
+    /** Raw MCP annotations, which use the spec's `*Hint` spelling. */
+    annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean } | null;
+  } | null>;
+  toolsError?: string | null;
+};
