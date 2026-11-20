@@ -716,6 +716,43 @@ export function ensureDetailsPanelDefined(window: TermWindow): void {
             padding-left: 1ch;
           }
 
+          .details-markdown__table {
+            margin-bottom: 1px;
+          }
+
+          /*
+           * The layout engine sizes the columns against the panel, so the
+           * widths are left to it. Every cell keeps its own border: dropping
+           * the inner rules to leave only a header rule collapses the row
+           * heights, which eats the wrapped lines inside a cell.
+           */
+          .details-markdown__table-grid {
+            border-collapse: collapse;
+            max-width: 100%;
+          }
+
+          .details-markdown__table-cell {
+            border-color: #8aa4bf;
+            color: #d7ecff;
+          }
+
+          .details-markdown__table-cell--head {
+            color: #ffffff;
+            font-weight: bold;
+          }
+
+          .details-markdown__table-cell--left {
+            text-align: left;
+          }
+
+          .details-markdown__table-cell--center {
+            text-align: center;
+          }
+
+          .details-markdown__table-cell--right {
+            text-align: right;
+          }
+
           .details-markdown__strong {
             color: #ffffff;
             font-weight: bold;
